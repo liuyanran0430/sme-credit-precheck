@@ -1,0 +1,384 @@
+/* ============ 申请详情 ============ */
+.banner-warn {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  border-radius: 8px;
+  padding: 11px 14px;
+  font-size: 13px;
+  margin-bottom: 14px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.stat-card {
+  padding: 14px 16px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--slate-400);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--slate-900);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stat-value-sm {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--slate-800);
+}
+
+.compliance-miss {
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: #b45309;
+}
+
+.compliance-ok {
+  color: #15803d;
+}
+
+.bar-bg {
+  height: 6px;
+  background: var(--slate-100);
+  border-radius: 3px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.bar {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--ok);
+  width: 50%;
+}
+
+.bar.warn {
+  background: var(--warn);
+  width: 65%;
+}
+
+.bar.danger {
+  background: var(--risk);
+  width: 85%;
+}
+
+.bar.muted {
+  background: var(--slate-300);
+  width: 30%;
+}
+
+.detail-main {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+
+.panel-head {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--slate-100);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 50px;
+}
+
+.panel-head h3 {
+  font-size: 14px;
+  color: var(--slate-800);
+}
+
+.panel-meta {
+  font-size: 11px;
+  color: var(--slate-400);
+}
+
+.panel-body {
+  padding: 14px 16px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* 材料清单超长时面板内部滚动（预留页头/步骤条/统计卡的高度） */
+.mat-panel .panel-body {
+  max-height: calc(100vh - 330px);
+  min-height: 160px;
+}
+
+.panel-foot {
+  padding: 12px 16px;
+  border-top: 1px solid var(--slate-100);
+  display: flex;
+  gap: 8px;
+  background: var(--slate-50);
+}
+
+.panel-foot.right {
+  justify-content: flex-end;
+}
+
+/* 材料列表 */
+.mat-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--slate-100);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  transition: 0.15s;
+}
+
+.mat-item:hover {
+  border-color: #bfdbfe;
+  background: var(--blue-bg);
+}
+
+.mat-item.low {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.mat-item.pending {
+  border-color: #bfdbfe;
+  background: #f0f9ff;
+}
+
+.mat-item.none {
+  border-style: dashed;
+  border-color: var(--slate-200);
+  background: var(--slate-50);
+}
+
+.mat-icon {
+  font-size: 16px;
+  flex: none;
+}
+
+.mat-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mat-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--slate-700);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mat-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mat-name-row .mat-name {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.mat-name-row .mat-status {
+  flex: none;
+}
+
+.mat-ver {
+  font-size: 11px;
+  color: var(--slate-400);
+}
+
+.mat-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.mat-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.mat-status.ok {
+  background: var(--ok-bg);
+  color: #065f46;
+}
+
+.mat-status.low {
+  background: #fff;
+  border: 1px solid #fde68a;
+  color: var(--warn);
+}
+
+.mat-status.pending {
+  background: var(--warn-bg);
+  color: #92400e;
+}
+
+.mat-status.none {
+  background: var(--slate-100);
+  color: var(--slate-500);
+}
+
+.mat-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--slate-400);
+  font-size: 12px;
+  border: 1px dashed var(--slate-200);
+  border-radius: 8px;
+}
+
+/* AI 预审摘要 */
+.ai-primary {
+  background: var(--slate-50);
+  border-left: 4px solid #10b981;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.ai-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--slate-800);
+}
+
+.ai-sub {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--slate-500);
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.ai-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.ai-block h4 {
+  font-size: 11px;
+  color: var(--slate-400);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.ai-block ul {
+  font-size: 12.5px;
+  color: var(--slate-600);
+}
+
+.ai-block .box {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+.box.warn {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.box.risk {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.box.info {
+  background: var(--blue-bg);
+  border: 1px solid #dbeafe;
+  color: var(--blue-d);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  text-align: center;
+  border-top: 1px solid var(--slate-100);
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+.ai-metrics b {
+  display: block;
+  font-size: 20px;
+  color: var(--slate-800);
+}
+
+.ai-metrics span {
+  font-size: 11px;
+  color: var(--slate-400);
+}
+
+.action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.actions-left,
+.actions-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background: var(--slate-200);
+  margin: 0 4px;
+}

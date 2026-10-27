@@ -1,0 +1,3270 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "小微企业授信智能预审系统",
+    "description": "小微企业授信智能预审系统后台接口。接口契约由 OpenAPI 自动生成。",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "系统"
+        ],
+        "summary": "健康检查",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "认证"
+        ],
+        "summary": "用户登录",
+        "description": "校验用户名密码，成功返回 JWT 访问令牌与用户信息。",
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "认证"
+        ],
+        "summary": "获取当前登录用户",
+        "description": "根据访问令牌返回当前用户信息，用于前端恢复登录态与角色校验。",
+        "operationId": "read_me_api_v1_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRead"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/applications": {
+      "get": {
+        "tags": [
+          "申请管理"
+        ],
+        "summary": "分页查询授信申请",
+        "description": "支持按状态、关键字（申请编号 / 企业名称）筛选，按创建时间倒序返回。",
+        "operationId": "list_applications_api_v1_applications_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ApplicationStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "申请状态",
+              "title": "Status"
+            },
+            "description": "申请状态"
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "申请编号或企业名称关键字",
+              "title": "Keyword"
+            },
+            "description": "申请编号或企业名称关键字"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "页码",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "页码"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "每页条数",
+              "default": 20,
+              "title": "Page Size"
+            },
+            "description": "每页条数"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Page_ApplicationRead_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "申请管理"
+        ],
+        "summary": "提交新申请",
+        "description": "创建授信申请并写入数据库，客户经理取当前登录用户姓名，申请进入待材料检查状态。",
+        "operationId": "create_application_api_v1_applications_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{app_no}": {
+      "get": {
+        "tags": [
+          "申请管理"
+        ],
+        "summary": "查询申请详情",
+        "operationId": "get_application_api_v1_applications__app_no__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "申请管理"
+        ],
+        "summary": "修改申请信息",
+        "description": "修改企业名称、统一社会信用代码、贷款类型、申请金额；任一字段发生变化时重新生成 AI 预审报告。",
+        "operationId": "edit_application_api_v1_applications__app_no__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "申请管理"
+        ],
+        "summary": "删除申请",
+        "description": "删除申请及其所有关联数据（AI 报告、人工复核、风控复核、材料记录），并清理上传文件。",
+        "operationId": "delete_application_api_v1_applications__app_no__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{app_no}/status": {
+      "patch": {
+        "tags": [
+          "申请管理"
+        ],
+        "summary": "流转申请状态",
+        "description": "人工复核 / 风控决策后推动申请状态流转。业务逻辑待实现。",
+        "operationId": "update_application_status_api_v1_applications__app_no__status_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{app_no}/materials": {
+      "get": {
+        "tags": [
+          "材料管理"
+        ],
+        "summary": "查询申请材料清单",
+        "operationId": "list_materials_api_v1_applications__app_no__materials_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MaterialRead"
+                  },
+                  "title": "Response List Materials Api V1 Applications  App No  Materials Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{app_no}/materials/{material_id}/file": {
+      "get": {
+        "tags": [
+          "材料管理"
+        ],
+        "summary": "预览材料文件",
+        "description": "内联返回材料原文件，浏览器可直接预览 PDF 与图片。",
+        "operationId": "preview_material_api_v1_applications__app_no__materials__material_id__file_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "material_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Material Id"
+            }
+          },
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "材料或文件不存在"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{app_no}/materials/upload": {
+      "post": {
+        "tags": [
+          "材料管理"
+        ],
+        "summary": "上传补充材料",
+        "description": "接收一个或多个文件，保存后自动执行 OCR 抽取与 AI 分类，材料状态置为已抽取，并触发 AI 预审。",
+        "operationId": "upload_materials_api_v1_applications__app_no__materials_upload_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_materials_api_v1_applications__app_no__materials_upload_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MaterialRead"
+                  },
+                  "title": "Response Upload Materials Api V1 Applications  App No  Materials Upload Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{app_no}/materials/{material_id}/classify": {
+      "post": {
+        "tags": [
+          "材料管理"
+        ],
+        "summary": "AI 材料分类",
+        "description": "对已上传材料执行 AI 分类，回写类别、置信度、分类依据与 OCR 文本，状态置为已抽取。",
+        "operationId": "classify_material_endpoint_api_v1_applications__app_no__materials__material_id__classify_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "material_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Material Id"
+            }
+          },
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialClassifyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "description": "材料不存在"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{app_no}/materials/{material_id}": {
+      "patch": {
+        "tags": [
+          "材料管理"
+        ],
+        "summary": "修改材料类别",
+        "description": "人工修正材料类别（如将「其他」中的文件归入正确类别）。",
+        "operationId": "update_material_api_v1_applications__app_no__materials__material_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "material_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Material Id"
+            }
+          },
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialRead"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "材料不存在"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "材料管理"
+        ],
+        "summary": "删除材料",
+        "description": "删除材料记录并清理对应的上传文件，随后自动重新执行 AI 预审并同步申请状态。",
+        "operationId": "delete_material_api_v1_applications__app_no__materials__material_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "material_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Material Id"
+            }
+          },
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "材料不存在"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{app_no}/report": {
+      "get": {
+        "tags": [
+          "AI 预审"
+        ],
+        "summary": "查询 AI 预审报告",
+        "description": "返回该申请最新一版 AI 预审报告。",
+        "operationId": "get_latest_report_api_v1_applications__app_no__report_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiReportRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{app_no}/report/completeness": {
+      "get": {
+        "tags": [
+          "AI 预审"
+        ],
+        "summary": "材料完整性分析",
+        "description": "按必备材料清单、内容可读性与特殊要求（流水覆盖超过 6 个月、财务报表三表齐全）判断材料完整性；一致性校验暂未接入。",
+        "operationId": "get_completeness_api_v1_applications__app_no__report_completeness_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompletenessResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{app_no}/report/analyze": {
+      "post": {
+        "tags": [
+          "AI 预审"
+        ],
+        "summary": "AI 材料分析",
+        "description": "执行材料完整性与一致性判断、准入规则匹配、风险信号汇总，并输出低置信 / 规则冲突项。业务逻辑待实现。",
+        "operationId": "analyze_materials_api_v1_applications__app_no__report_analyze_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialAnalysisRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialAnalysisResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{app_no}/report/generate": {
+      "post": {
+        "tags": [
+          "AI 预审"
+        ],
+        "summary": "触发 AI 预审",
+        "description": "材料分类完成后自动执行，也可手动重新触发；生成或更新该申请的预审报告。",
+        "operationId": "generate_report_api_v1_applications__app_no__report_generate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AiReportGenerateRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiReportRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{app_no}/reviews": {
+      "get": {
+        "tags": [
+          "人工复核"
+        ],
+        "summary": "查询人工复核记录",
+        "operationId": "list_manual_reviews_api_v1_applications__app_no__reviews_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ManualReviewRead"
+                  },
+                  "title": "Response List Manual Reviews Api V1 Applications  App No  Reviews Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "人工复核"
+        ],
+        "summary": "提交人工复核结果",
+        "description": "提交逐项复核结果并推动申请进入风控复核队列。业务逻辑待实现。",
+        "operationId": "submit_manual_review_api_v1_applications__app_no__reviews_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualReviewCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManualReviewRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk/queue": {
+      "get": {
+        "tags": [
+          "风控复核"
+        ],
+        "summary": "查询风控复核队列",
+        "description": "返回所有处于待风控复核状态的申请。",
+        "operationId": "list_risk_queue_api_v1_risk_queue_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApplicationRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Risk Queue Api V1 Risk Queue Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/risk/{app_no}/reviews": {
+      "get": {
+        "tags": [
+          "风控复核"
+        ],
+        "summary": "查询风控复核记录",
+        "operationId": "list_risk_reviews_api_v1_risk__app_no__reviews_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RiskReviewRead"
+                  },
+                  "title": "Response List Risk Reviews Api V1 Risk  App No  Reviews Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/risk/{app_no}/decision": {
+      "post": {
+        "tags": [
+          "风控复核"
+        ],
+        "summary": "提交风控复核决策",
+        "description": "录入风控决策结论与缓释条件，并推动申请进入审批或补件。业务逻辑待实现。",
+        "operationId": "submit_risk_decision_api_v1_risk__app_no__decision_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RiskDecisionCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RiskReviewRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AiConclusion": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "attention",
+          "forbidden",
+          "manual"
+        ],
+        "title": "AiConclusion",
+        "description": "AI 预审结论。"
+      },
+      "AiErrorResponse": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^AI_(CLS|OCR|ANL)_\\d{3}$",
+            "title": "Code",
+            "description": "错误码，如 AI_CLS_001"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "错误描述"
+          },
+          "material_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Id",
+            "description": "关联材料 ID"
+          },
+          "recoverable": {
+            "type": "boolean",
+            "title": "Recoverable",
+            "description": "是否可通过重试 / 重新上传恢复",
+            "default": true
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion",
+            "description": "处理建议"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "AiErrorResponse",
+        "description": "AI 能力统一错误响应。"
+      },
+      "AiReportGenerateRequest": {
+        "properties": {
+          "rule_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Version",
+            "description": "指定规则版本，默认取最新版本"
+          }
+        },
+        "type": "object",
+        "title": "AiReportGenerateRequest",
+        "description": "触发 AI 预审的请求体。"
+      },
+      "AiReportRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "app_id": {
+            "type": "integer",
+            "title": "App Id"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "rule_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Version"
+          },
+          "conclusion": {
+            "$ref": "#/components/schemas/AiConclusion"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "pass_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pass Rate"
+          },
+          "rule_results": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Results"
+          },
+          "risk_signals": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Signals"
+          },
+          "conflicts": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflicts"
+          },
+          "completeness": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completeness",
+            "description": "材料完整性分析结果"
+          },
+          "consistency": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consistency",
+            "description": "材料一致性分析结果"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "app_id",
+          "version",
+          "rule_version",
+          "conclusion",
+          "summary",
+          "pass_rate",
+          "rule_results",
+          "risk_signals",
+          "conflicts"
+        ],
+        "title": "AiReportRead"
+      },
+      "AiReportSummary": {
+        "properties": {
+          "conclusion": {
+            "$ref": "#/components/schemas/AiConclusion",
+            "description": "预审结论"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "description": "结论摘要"
+          },
+          "pass_rate": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Pass Rate",
+            "description": "预估通过率（%）"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conclusion",
+          "summary",
+          "pass_rate"
+        ],
+        "title": "AiReportSummary",
+        "description": "AI 预审报告头。"
+      },
+      "AnalysisContext": {
+        "properties": {
+          "app_no": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "App No",
+            "description": "申请编号"
+          },
+          "company_name": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Company Name",
+            "description": "企业名称"
+          },
+          "credit_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Code",
+            "description": "统一社会信用代码"
+          },
+          "apply_amount": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Apply Amount",
+            "description": "申请金额（万元）"
+          },
+          "product": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Product",
+            "description": "贷款产品"
+          },
+          "materials": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisMaterial"
+            },
+            "type": "array",
+            "title": "Materials",
+            "description": "该申请下的全部材料"
+          }
+        },
+        "type": "object",
+        "required": [
+          "app_no",
+          "company_name",
+          "apply_amount",
+          "product"
+        ],
+        "title": "AnalysisContext",
+        "description": "申请级上下文。"
+      },
+      "AnalysisMaterial": {
+        "properties": {
+          "material_id": {
+            "type": "integer",
+            "title": "Material Id"
+          },
+          "material_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material Path",
+            "description": "材料文件地址"
+          },
+          "category": {
+            "$ref": "#/components/schemas/MaterialCategory"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "description": "分类置信度"
+          },
+          "ocr_result": {
+            "$ref": "#/components/schemas/OcrResult",
+            "description": "字段抽取结果"
+          }
+        },
+        "type": "object",
+        "required": [
+          "material_id",
+          "category",
+          "confidence",
+          "ocr_result"
+        ],
+        "title": "AnalysisMaterial",
+        "description": "参与分析的材料。"
+      },
+      "ApplicationCreate": {
+        "properties": {
+          "company_name": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Company Name",
+            "description": "企业名称"
+          },
+          "credit_code": {
+            "type": "string",
+            "maxLength": 18,
+            "minLength": 18,
+            "pattern": "^[0-9A-Z]{18}$",
+            "title": "Credit Code",
+            "description": "统一社会信用代码"
+          },
+          "amount": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Amount",
+            "description": "申请金额（万元）"
+          },
+          "product": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Product",
+            "description": "贷款产品"
+          },
+          "manager_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manager Name",
+            "description": "客户经理"
+          }
+        },
+        "type": "object",
+        "required": [
+          "company_name",
+          "credit_code",
+          "amount",
+          "product"
+        ],
+        "title": "ApplicationCreate",
+        "description": "提交新申请请求体。"
+      },
+      "ApplicationEdit": {
+        "properties": {
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name",
+            "description": "企业名称"
+          },
+          "credit_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 18,
+                "minLength": 18,
+                "pattern": "^[0-9A-Z]{18}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Code",
+            "description": "统一社会信用代码"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount",
+            "description": "申请金额（万元）"
+          },
+          "product": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product",
+            "description": "贷款类型"
+          }
+        },
+        "type": "object",
+        "title": "ApplicationEdit",
+        "description": "修改申请基础信息请求体，字段均可选，至少修改一项。"
+      },
+      "ApplicationRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "app_no": {
+            "type": "string",
+            "title": "App No",
+            "description": "申请编号"
+          },
+          "company_name": {
+            "type": "string",
+            "title": "Company Name"
+          },
+          "credit_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit Code"
+          },
+          "amount": {
+            "type": "number",
+            "title": "Amount"
+          },
+          "product": {
+            "type": "string",
+            "title": "Product"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ApplicationStatus"
+          },
+          "manager_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manager Name"
+          },
+          "submitted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submitted At"
+          },
+          "sla_deadline": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sla Deadline"
+          },
+          "ai_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Summary"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "app_no",
+          "company_name",
+          "credit_code",
+          "amount",
+          "product",
+          "status",
+          "manager_name",
+          "submitted_at",
+          "sla_deadline",
+          "ai_summary",
+          "created_at"
+        ],
+        "title": "ApplicationRead"
+      },
+      "ApplicationStatus": {
+        "type": "string",
+        "enum": [
+          "check",
+          "supplement",
+          "manual",
+          "risk",
+          "approved"
+        ],
+        "title": "ApplicationStatus",
+        "description": "授信申请状态。"
+      },
+      "ApplicationUpdate": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ApplicationStatus",
+            "description": "目标状态"
+          },
+          "remark": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remark",
+            "description": "流转备注"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ApplicationUpdate",
+        "description": "申请状态流转请求体。"
+      },
+      "Body_upload_materials_api_v1_applications__app_no__materials_upload_post": {
+        "properties": {
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "待上传的材料文件"
+          }
+        },
+        "type": "object",
+        "required": [
+          "files"
+        ],
+        "title": "Body_upload_materials_api_v1_applications__app_no__materials_upload_post"
+      },
+      "CategoryCandidate": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/MaterialCategory",
+            "description": "类别编码"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 50,
+            "title": "Label",
+            "description": "类别中文标签"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "description": "类别置信度"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "label",
+          "confidence"
+        ],
+        "title": "CategoryCandidate",
+        "description": "分类候选类别。"
+      },
+      "CategoryCompleteness": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/MaterialCategory"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "description": "是否为必备类别"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Count",
+            "description": "该类材料份数"
+          },
+          "satisfied": {
+            "type": "boolean",
+            "title": "Satisfied",
+            "description": "是否满足最小份数要求"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "label",
+          "required",
+          "count",
+          "satisfied"
+        ],
+        "title": "CategoryCompleteness",
+        "description": "单类材料齐全度。"
+      },
+      "CompletenessIssue": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "missing",
+              "unreadable",
+              "period",
+              "tables"
+            ],
+            "title": "Type",
+            "description": "问题类型"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "问题说明"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "message"
+        ],
+        "title": "CompletenessIssue",
+        "description": "完整性检查问题项。"
+      },
+      "CompletenessResult": {
+        "properties": {
+          "is_complete": {
+            "type": "boolean",
+            "title": "Is Complete"
+          },
+          "required": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialCategory"
+            },
+            "type": "array",
+            "title": "Required",
+            "description": "必交材料类别"
+          },
+          "missing": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialCategory"
+            },
+            "type": "array",
+            "title": "Missing",
+            "description": "缺失类别"
+          },
+          "coverage_rate": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Coverage Rate",
+            "description": "覆盖率"
+          },
+          "total_materials": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Materials",
+            "description": "材料总份数",
+            "default": 0
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryCompleteness"
+            },
+            "type": "array",
+            "title": "Categories",
+            "description": "各材料类别齐全度明细"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/CompletenessIssue"
+            },
+            "type": "array",
+            "title": "Issues",
+            "description": "完整性检查发现的问题"
+          }
+        },
+        "type": "object",
+        "required": [
+          "is_complete",
+          "required",
+          "coverage_rate"
+        ],
+        "title": "CompletenessResult",
+        "description": "材料完整性判断。"
+      },
+      "ConflictAction": {
+        "type": "string",
+        "enum": [
+          "manual_review"
+        ],
+        "title": "ConflictAction",
+        "description": "冲突项处置建议。"
+      },
+      "ConflictItem": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ConflictType"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "来源材料类别编码"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field",
+            "description": "涉及字段"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "涉及取值"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "置信度"
+          },
+          "rules": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rules",
+            "description": "冲突涉及的规则 ID"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "冲突原因"
+          },
+          "action": {
+            "$ref": "#/components/schemas/ConflictAction",
+            "description": "处置建议",
+            "default": "manual_review"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "reason"
+        ],
+        "title": "ConflictItem",
+        "description": "低置信、规则冲突或数据不一致项。"
+      },
+      "ConflictSummary": {
+        "properties": {
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictItem"
+            },
+            "type": "array",
+            "title": "Conflicts"
+          }
+        },
+        "type": "object",
+        "title": "ConflictSummary",
+        "description": "低置信 / 冲突项汇总。"
+      },
+      "ConflictType": {
+        "type": "string",
+        "enum": [
+          "low_confidence",
+          "rule_conflict",
+          "data_inconsistent"
+        ],
+        "title": "ConflictType",
+        "description": "低置信 / 冲突项类型。"
+      },
+      "ConsistencyCheck": {
+        "properties": {
+          "check_item": {
+            "type": "string",
+            "maxLength": 100,
+            "title": "Check Item",
+            "description": "校验项名称"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field",
+            "description": "比对字段"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/ConsistencyValue"
+            },
+            "type": "array",
+            "title": "Values",
+            "description": "各来源取值"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConsistencyStatus",
+            "description": "校验结论：一致 / 不一致 / 无法判定"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/ConsistencySeverity",
+            "description": "严重程度"
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion",
+            "description": "处理建议"
+          }
+        },
+        "type": "object",
+        "required": [
+          "check_item",
+          "status",
+          "severity"
+        ],
+        "title": "ConsistencyCheck",
+        "description": "单项一致性校验。"
+      },
+      "ConsistencyResult": {
+        "properties": {
+          "is_consistent": {
+            "type": "boolean",
+            "title": "Is Consistent"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/ConsistencyCheck"
+            },
+            "type": "array",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "is_consistent"
+        ],
+        "title": "ConsistencyResult",
+        "description": "材料一致性判断。"
+      },
+      "ConsistencySeverity": {
+        "type": "string",
+        "enum": [
+          "high",
+          "medium",
+          "low",
+          "none"
+        ],
+        "title": "ConsistencySeverity",
+        "description": "一致性校验严重程度。"
+      },
+      "ConsistencyStatus": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "fail",
+          "uncertain"
+        ],
+        "title": "ConsistencyStatus",
+        "description": "一致性校验结论（三态）。"
+      },
+      "ConsistencyValue": {
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialCategory"
+              },
+              {
+                "type": "string",
+                "const": "application"
+              }
+            ],
+            "title": "Source",
+            "description": "来源材料类别编码，或 application 表示申请信息"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "value"
+        ],
+        "title": "ConsistencyValue",
+        "description": "同一字段在不同来源中的取值。"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LoginRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "ManualReviewCreate": {
+        "properties": {
+          "reviewer": {
+            "type": "string",
+            "maxLength": 50,
+            "title": "Reviewer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reviewer",
+          "items"
+        ],
+        "title": "ManualReviewCreate",
+        "description": "提交人工复核请求体。"
+      },
+      "ManualReviewRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "app_id": {
+            "type": "integer",
+            "title": "App Id"
+          },
+          "reviewer": {
+            "type": "string",
+            "title": "Reviewer"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/ReviewDecision"
+          },
+          "checklist_result": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checklist Result"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "app_id",
+          "reviewer",
+          "decision",
+          "checklist_result",
+          "comment"
+        ],
+        "title": "ManualReviewRead"
+      },
+      "MaterialAnalysisRequest": {
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/AnalysisContext"
+          },
+          "required_categories": {
+            "items": {
+              "$ref": "#/components/schemas/MaterialCategory"
+            },
+            "type": "array",
+            "title": "Required Categories",
+            "description": "该产品要求的必交材料清单"
+          },
+          "rule_version": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Rule Version",
+            "description": "准入规则版本",
+            "default": "v2026-10"
+          }
+        },
+        "type": "object",
+        "required": [
+          "context"
+        ],
+        "title": "MaterialAnalysisRequest",
+        "description": "材料分析请求：公共输入 + 必交材料清单 + 规则版本。"
+      },
+      "MaterialAnalysisResponse": {
+        "properties": {
+          "completeness": {
+            "$ref": "#/components/schemas/CompletenessResult"
+          },
+          "consistency": {
+            "$ref": "#/components/schemas/ConsistencyResult"
+          },
+          "rule_matching": {
+            "$ref": "#/components/schemas/RuleMatchResult"
+          },
+          "risk_summary": {
+            "$ref": "#/components/schemas/RiskSummary"
+          },
+          "conflict_summary": {
+            "$ref": "#/components/schemas/ConflictSummary"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/AiReportSummary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "completeness",
+          "consistency",
+          "rule_matching",
+          "risk_summary",
+          "conflict_summary",
+          "summary"
+        ],
+        "title": "MaterialAnalysisResponse",
+        "description": "材料分析完整输出，对应 AiReport 的落库字段。"
+      },
+      "MaterialCategory": {
+        "type": "string",
+        "enum": [
+          "business_license",
+          "bank_statement",
+          "financial_report",
+          "tax_return",
+          "credit_auth",
+          "other"
+        ],
+        "title": "MaterialCategory",
+        "description": "材料类别统一编码。"
+      },
+      "MaterialClassifyResponse": {
+        "properties": {
+          "material_id": {
+            "type": "integer",
+            "title": "Material Id",
+            "description": "材料 ID"
+          },
+          "candidate": {
+            "$ref": "#/components/schemas/CategoryCandidate",
+            "description": "单一分类候选结果"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "AI 分类依据"
+          },
+          "model_version": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Model Version",
+            "description": "模型版本",
+            "default": "cls-v1.0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "material_id",
+          "candidate"
+        ],
+        "title": "MaterialClassifyResponse",
+        "description": "材料分类与字段抽取的输出。\n\n边界约定：\n- 置信度 < 0.6 时归入 other，并转人工分类；"
+      },
+      "MaterialRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "app_id": {
+            "type": "integer",
+            "title": "App Id"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "材料类别"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "file_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Url"
+          },
+          "file_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Size"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MaterialStatus"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence",
+            "description": "AI 分类置信度"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "AI 分类依据"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "app_id",
+          "category",
+          "file_name",
+          "file_url",
+          "file_size",
+          "version",
+          "status",
+          "created_at"
+        ],
+        "title": "MaterialRead"
+      },
+      "MaterialStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "ok",
+          "low",
+          "none"
+        ],
+        "title": "MaterialStatus",
+        "description": "材料抽取状态。"
+      },
+      "MaterialUpdate": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/MaterialCategory",
+            "description": "修正后的材料类别"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category"
+        ],
+        "title": "MaterialUpdate",
+        "description": "材料类别人工修正。"
+      },
+      "OcrField": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "抽取值"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "description": "字段置信度"
+          }
+        },
+        "type": "object",
+        "required": [
+          "confidence"
+        ],
+        "title": "OcrField",
+        "description": "单个抽取字段及其置信度。"
+      },
+      "OcrResult": {
+        "properties": {
+          "fields": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/OcrField"
+            },
+            "type": "object",
+            "title": "Fields",
+            "description": "按字段名索引的抽取结果"
+          }
+        },
+        "type": "object",
+        "title": "OcrResult",
+        "description": "OCR / 多模态抽取的结构化结果。"
+      },
+      "Page_ApplicationRead_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ApplicationRead"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "总记录数"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "Page[ApplicationRead]"
+      },
+      "ReviewDecision": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "conditional",
+          "reject",
+          "further"
+        ],
+        "title": "ReviewDecision",
+        "description": "复核决策结论。"
+      },
+      "ReviewItem": {
+        "properties": {
+          "item_id": {
+            "type": "integer",
+            "title": "Item Id",
+            "description": "清单项编号"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "adopt",
+              "modify",
+              "reject"
+            ],
+            "title": "Result",
+            "description": "采纳 / 修改 / 推翻"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment",
+            "description": "复核理由"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "result"
+        ],
+        "title": "ReviewItem",
+        "description": "单条清单复核结果。"
+      },
+      "RiskDecisionCreate": {
+        "properties": {
+          "reviewer": {
+            "type": "string",
+            "maxLength": 50,
+            "title": "Reviewer"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/ReviewDecision"
+          },
+          "opinion": {
+            "type": "string",
+            "title": "Opinion",
+            "description": "风控复核意见"
+          },
+          "mitigation": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mitigation",
+            "description": "风险缓释条件"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reviewer",
+          "decision",
+          "opinion"
+        ],
+        "title": "RiskDecisionCreate",
+        "description": "提交风控复核决策请求体。"
+      },
+      "RiskEvidence": {
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "来源材料类别编码"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "证据描述"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "RiskEvidence",
+        "description": "风险信号证据。"
+      },
+      "RiskLevel": {
+        "type": "string",
+        "enum": [
+          "high",
+          "medium",
+          "low"
+        ],
+        "title": "RiskLevel",
+        "description": "风险信号等级。"
+      },
+      "RiskReviewRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "app_id": {
+            "type": "integer",
+            "title": "App Id"
+          },
+          "reviewer": {
+            "type": "string",
+            "title": "Reviewer"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/ReviewDecision"
+          },
+          "opinion": {
+            "type": "string",
+            "title": "Opinion"
+          },
+          "mitigation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mitigation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "app_id",
+          "reviewer",
+          "decision",
+          "opinion",
+          "mitigation"
+        ],
+        "title": "RiskReviewRead"
+      },
+      "RiskSignal": {
+        "properties": {
+          "signal_id": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Signal Id"
+          },
+          "level": {
+            "$ref": "#/components/schemas/RiskLevel"
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 50,
+            "title": "Category",
+            "description": "风险类别"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Title"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/RiskEvidence"
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion"
+          }
+        },
+        "type": "object",
+        "required": [
+          "signal_id",
+          "level",
+          "category",
+          "title",
+          "evidence"
+        ],
+        "title": "RiskSignal",
+        "description": "单条风险信号。"
+      },
+      "RiskSummary": {
+        "properties": {
+          "risk_signals": {
+            "items": {
+              "$ref": "#/components/schemas/RiskSignal"
+            },
+            "type": "array",
+            "title": "Risk Signals"
+          }
+        },
+        "type": "object",
+        "title": "RiskSummary",
+        "description": "风险信号汇总。"
+      },
+      "RuleEvidence": {
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "来源材料类别编码"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field",
+            "description": "证据字段"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "证据取值"
+          }
+        },
+        "type": "object",
+        "title": "RuleEvidence",
+        "description": "规则判定所依据的证据。"
+      },
+      "RuleMatchItem": {
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Rule Id"
+          },
+          "rule_name": {
+            "type": "string",
+            "maxLength": 200,
+            "title": "Rule Name"
+          },
+          "result": {
+            "$ref": "#/components/schemas/RuleMatchStatus"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RuleEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail",
+            "description": "判定说明"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rule_id",
+          "rule_name",
+          "result"
+        ],
+        "title": "RuleMatchItem",
+        "description": "单条准入规则匹配结果。"
+      },
+      "RuleMatchResult": {
+        "properties": {
+          "rule_version": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Rule Version"
+          },
+          "pass_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Pass Count"
+          },
+          "total_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Count"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/RuleMatchItem"
+            },
+            "type": "array",
+            "title": "Rules"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rule_version",
+          "pass_count",
+          "total_count"
+        ],
+        "title": "RuleMatchResult",
+        "description": "准入规则匹配汇总。"
+      },
+      "RuleMatchStatus": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "fail",
+          "uncertain"
+        ],
+        "title": "RuleMatchStatus",
+        "description": "准入规则匹配结果。"
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "JWT 访问令牌"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In",
+            "description": "有效期（秒）"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserRead",
+            "description": "登录用户信息"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "expires_in",
+          "user"
+        ],
+        "title": "TokenResponse"
+      },
+      "UserRead": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "full_name": {
+            "type": "string",
+            "title": "Full Name"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "full_name",
+          "role",
+          "is_active"
+        ],
+        "title": "UserRead"
+      },
+      "UserRole": {
+        "type": "string",
+        "enum": [
+          "manager",
+          "risk",
+          "admin"
+        ],
+        "title": "UserRole",
+        "description": "用户角色。"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "系统",
+      "description": "健康检查等系统级接口"
+    },
+    {
+      "name": "认证",
+      "description": "用户登录与身份认证"
+    },
+    {
+      "name": "申请管理",
+      "description": "授信申请提交、查询与状态流转"
+    },
+    {
+      "name": "材料管理",
+      "description": "申请材料上传、查询与删除"
+    },
+    {
+      "name": "AI 预审",
+      "description": "AI 预审报告查询与生成"
+    },
+    {
+      "name": "人工复核",
+      "description": "人工复核清单与复核结果提交"
+    },
+    {
+      "name": "风控复核",
+      "description": "风控复核队列与决策提交"
+    }
+  ]
+}

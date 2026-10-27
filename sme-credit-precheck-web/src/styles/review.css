@@ -1,0 +1,241 @@
+/* ============ 人工复核 ============ */
+.review-summary {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.review-summary .legend {
+  display: flex;
+  gap: 14px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.review-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.review-progress .track {
+  width: 180px;
+  height: 8px;
+  background: var(--slate-100);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.review-progress .fill {
+  height: 100%;
+  width: 0;
+  background: var(--blue);
+  border-radius: 4px;
+  transition: width 0.25s;
+}
+
+.review-progress .fill.done {
+  background: #10b981;
+}
+
+/* 复核卡片 */
+.review-card {
+  margin-bottom: 12px;
+  border-left: 4px solid transparent;
+  overflow: hidden;
+}
+
+.review-card.type-normal {
+  border-left-color: var(--blue);
+}
+
+.review-card.type-warn {
+  border-left-color: var(--warn);
+}
+
+.review-card.type-low {
+  border-left-color: var(--warn);
+}
+
+.review-card.type-risk {
+  border-left-color: var(--risk);
+}
+
+.rc-head {
+  padding: 14px 16px 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.rc-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rc-title .num {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+
+.type-normal .num {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.type-warn .num,
+.type-low .num {
+  background: var(--warn-bg);
+  color: #92400e;
+}
+
+.type-risk .num {
+  background: var(--risk-bg);
+  color: #991b1b;
+}
+
+.rc-title h3 {
+  font-size: 14px;
+  color: var(--slate-800);
+}
+
+.rc-conf {
+  font-size: 12px;
+  color: var(--slate-400);
+}
+
+.rc-conf b {
+  color: var(--slate-700);
+}
+
+.rc-ref {
+  font-size: 12px;
+  color: var(--blue);
+}
+
+.rc-desc {
+  margin: 10px 16px 0;
+  background: var(--slate-50);
+  border: 1px solid var(--slate-100);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--slate-600);
+}
+
+.checks {
+  margin: 10px 16px 0;
+  background: var(--blue-bg);
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.checks h5 {
+  font-size: 11px;
+  color: var(--blue-d);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 8px;
+}
+
+.checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 22px;
+  font-size: 13px;
+  color: var(--slate-700);
+  cursor: pointer;
+}
+
+.rc-actions {
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.seg {
+  display: flex;
+  gap: 8px;
+}
+
+.seg label {
+  flex: 1;
+  cursor: pointer;
+}
+
+.seg input {
+  display: none;
+}
+
+.seg span {
+  display: block;
+  text-align: center;
+  padding: 8px 4px;
+  border: 1px solid var(--slate-200);
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--slate-600);
+  transition: 0.15s;
+}
+
+.seg label:hover span {
+  background: var(--slate-50);
+}
+
+.seg input:checked + span {
+  background: var(--blue-bg);
+  border-color: var(--blue);
+  color: var(--blue-d);
+}
+
+.seg label.reject input:checked + span {
+  background: #fef2f2;
+  border-color: var(--risk);
+  color: var(--risk);
+}
+
+.rc-actions textarea {
+  width: 100%;
+  border: 1px solid var(--slate-200);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  resize: vertical;
+  min-height: 38px;
+  outline: none;
+}
+
+.rc-actions textarea:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}

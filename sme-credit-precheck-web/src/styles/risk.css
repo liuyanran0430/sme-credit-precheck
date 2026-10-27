@@ -1,0 +1,199 @@
+/* ============ 风控复核 ============ */
+.risk-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 980px;
+}
+
+.risk-table th {
+  padding: 11px 16px;
+  text-align: left;
+  font-size: 11px;
+  color: var(--slate-500);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--slate-50);
+  border-bottom: 1px solid var(--slate-200);
+}
+
+.risk-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--slate-100);
+  font-size: 13px;
+}
+
+.risk-table tr {
+  cursor: pointer;
+}
+
+.risk-table tr:hover td {
+  background: var(--slate-50);
+}
+
+.risk-table tr.selected td {
+  background: var(--blue-bg);
+}
+
+.risk-table tr.selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+.pri {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.pri-high {
+  background: var(--risk-bg);
+  color: #b91c1c;
+}
+
+.pri-mid {
+  background: var(--warn-bg);
+  color: #92400e;
+}
+
+.num-right {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 风控详情 */
+.risk-detail {
+  margin-top: 14px;
+  padding: 16px;
+}
+
+.risk-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.risk-detail-head h2 {
+  font-size: 15px;
+  color: var(--slate-800);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.risk-reason {
+  color: var(--risk);
+  font-size: 12.5px;
+  margin-top: 6px;
+}
+
+.risk-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.info-box {
+  background: var(--slate-50);
+  border: 1px solid var(--slate-200);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.info-box h4 {
+  font-size: 11px;
+  color: var(--slate-400);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  padding: 3px 0;
+}
+
+.info-row .v {
+  font-weight: 600;
+  color: var(--slate-800);
+}
+
+.info-row .v.danger {
+  color: var(--risk);
+}
+
+.info-row .v.warn {
+  color: var(--warn);
+}
+
+.quote {
+  font-size: 12.5px;
+  color: var(--slate-600);
+  font-style: italic;
+  line-height: 1.7;
+}
+
+/* 决策按钮 */
+.decision-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.decision {
+  border: 2px solid var(--slate-200);
+  background: var(--slate-50);
+  border-radius: 10px;
+  padding: 12px 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--slate-600);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: 0.15s;
+}
+
+.decision .ic {
+  font-size: 18px;
+}
+
+.decision:hover {
+  border-color: #cbd5e1;
+}
+
+.decision.sel {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.decision.pass.sel {
+  border-color: #10b981;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.decision.cond.sel {
+  border-color: var(--blue);
+  background: var(--blue-bg);
+  color: var(--blue-d);
+}
+
+.decision.reject.sel {
+  border-color: var(--warn);
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.decision.more.sel {
+  border-color: var(--purple);
+  background: var(--purple-bg);
+  color: #6d28d9;
+}

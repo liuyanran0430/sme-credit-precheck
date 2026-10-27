@@ -1,0 +1,281 @@
+/* ============ AI 预审报告 ============ */
+.section-card {
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.section-head {
+  padding: 12px 16px;
+  background: var(--slate-50);
+  border-bottom: 1px solid var(--slate-200);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-head h2 {
+  font-size: 14px;
+  color: var(--slate-700);
+}
+
+.section-body {
+  padding: 16px;
+}
+
+.section-card.conflict {
+  border-color: #fecdd3;
+  background: #fff1f2;
+}
+
+.section-card.conflict .section-head {
+  background: #ffe4e6;
+  border-bottom-color: #fecdd3;
+}
+
+.section-card.conflict .section-head h2 {
+  color: #9f1239;
+}
+
+/* 材料完整性 */
+.completeness {
+  background: var(--blue-bg);
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.completeness-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.completeness-head .ok {
+  color: #059669;
+}
+
+.completeness-head .warn {
+  color: #d97706;
+}
+
+.completeness-bar {
+  display: flex;
+  gap: 4px;
+}
+
+.completeness-bar i {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: #10b981;
+}
+
+.completeness-bar i.missing {
+  background: var(--slate-200);
+}
+
+.completeness-labels {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.completeness-labels span {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--slate-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.completeness-extra {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--slate-500);
+}
+
+.completeness-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: #b45309;
+  line-height: 1.5;
+}
+
+/* 一致性校验 */
+.check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 2px;
+}
+
+.check-item {
+  border: 1px solid var(--slate-200);
+  border-left-width: 3px;
+  border-radius: 7px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.check-item.ok {
+  border-left-color: #10b981;
+}
+
+.check-item.fail {
+  border-left-color: #ef4444;
+  background: #fff7f7;
+}
+
+.check-item.uncertain {
+  border-left-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.check-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.check-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--slate-700);
+}
+
+.check-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.check-badge {
+  font-size: 11px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.check-badge.ok {
+  color: #047857;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+
+.check-badge.fail {
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.check-badge.uncertain {
+  color: #b45309;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+
+.check-severity {
+  font-size: 11px;
+  color: var(--slate-400);
+  white-space: nowrap;
+}
+
+.check-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: var(--slate-600);
+  line-height: 1.5;
+}
+
+.check-value b {
+  font-weight: 500;
+  color: var(--slate-400);
+  margin-right: 4px;
+}
+
+.check-more {
+  font-size: 11px;
+  color: var(--slate-400);
+}
+
+.check-tip {
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: #b45309;
+  line-height: 1.5;
+}
+
+.consistency-placeholder {
+  border: 1px dashed var(--slate-300);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--slate-50);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--slate-500);
+}
+
+/* 冲突项 */
+.conflict-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.conflict-item .icon {
+  font-size: 18px;
+  color: var(--risk);
+  flex: none;
+}
+
+.conflict-item .body {
+  flex: 1;
+}
+
+.conflict-item h4 {
+  font-size: 13px;
+  color: var(--slate-800);
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.conflict-item .conf {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #be123c;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  padding: 1px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.conflict-item p {
+  font-size: 12px;
+  color: var(--slate-500);
+  margin: 6px 0 0;
+}
