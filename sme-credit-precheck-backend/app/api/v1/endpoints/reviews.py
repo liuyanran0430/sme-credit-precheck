@@ -2,9 +2,11 @@ from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_application_or_404, get_db
+from app.api.deps import get_application_or_404, get_current_user, get_db
 from app.models.application import Application
+from app.models.enums import ApplicationStatus, ReviewDecision
 from app.models.review import ManualReview
+from app.models.user import User
 from app.schemas.review import ManualReviewCreate, ManualReviewRead
 
 router = APIRouter()
@@ -30,12 +32,52 @@ def list_manual_reviews(
     response_model=ManualReviewRead,
     status_code=status.HTTP_201_CREATED,
     summary="提交人工复核结果",
-    description="提交逐项复核结果并推动申请进入风控复核队列。业务逻辑待实现。",
+    description=(
+        "提交逐项核验结果与最终复核结论：approve 通过进入风控复核；"
+        "supplement 退回补件并将补件说明写入申请；reject 否决申请进入终态。"
+    ),
 )
 def submit_manual_review(
     app: Application = Depends(get_application_or_404),
     payload: ManualReviewCreate = Body(...),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> ManualReviewRead:
-    # TODO: 校验清单完整性、汇总决策结论、更新申请状态
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="人工复核逻辑待实现")
+    if not payload.items:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="复核清单不能为空，请先完成 AI 预审",
+        )
+
+    if payload.decision == "approve":
+        decision = ReviewDecision.PASS
+        app.status = ApplicationStatus.RISK
+        app.supplement_note = None
+        app.supplement_source = None
+    elif payload.decision == "supplement":
+        if not payload.supplement_note or not payload.supplement_note.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="退回补件时补件说明不能为空",
+            )
+        decision = ReviewDecision.REJECT
+        app.status = ApplicationStatus.SUPPLEMENT
+        app.supplement_note = payload.supplement_note.strip()
+        app.supplement_source = "manual"
+    else:
+        decision = ReviewDecision.DENY
+        app.status = ApplicationStatus.REJECTED
+        app.supplement_note = None
+        app.supplement_source = None
+
+    review = ManualReview(
+        app_id=app.id,
+        reviewer=user.full_name,
+        decision=decision,
+        checklist_result=[item.model_dump() for item in payload.items],
+        comment=payload.comment,
+    )
+    db.add(review)
+    db.commit()
+    db.refresh(review)
+    return review

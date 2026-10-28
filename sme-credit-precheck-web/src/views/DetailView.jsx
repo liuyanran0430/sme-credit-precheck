@@ -1,10 +1,13 @@
-import { useEffect, useState, Fragment } from 'react'
+import { useEffect, useRef, useState, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp, normalizeApplication } from '../context/AppContext'
 import { STATUS_MAP, MATERIAL_CATEGORIES } from '../constants'
 import {
   fetchApplication,
+  fetchManualReviews,
   fetchMaterials,
+  fetchReport,
+  fetchRiskReviews,
   materialFileUrl,
   deleteMaterial
 } from '../api/applications'
@@ -22,23 +25,52 @@ function groupStatus(files) {
   return 'ok'
 }
 
+// 缺件文案：产品专属必交材料展示规则文件中的具体要求（desc），其余展示类别名
+function buildMissingLabels(data, product) {
+  const cats = data?.categories || []
+  return (data?.missing || []).map((key) => {
+    const item = cats.find((c) => c.category === key)
+    if (item?.requirement) return `${product}要求提供${item.requirement}`
+    const local = MATERIAL_CATEGORIES.find((c) => c.key === key)
+    return local ? local.label : key
+  })
+}
+
 export default function DetailView() {
   const { id } = useParams()
-  const { apps, getMaterials, setMaterials, updateApp, toast } = useApp()
+  const { apps, getMaterials, setMaterials, updateApp, processingMap, toast } = useApp()
   const navigate = useNavigate()
   const [showUpload, setShowUpload] = useState(false)
 
   const app = apps.find((a) => a.id === id) || apps[0]
+  // 当前申请的后台处理阶段：checking=材料检查中，analyzing=AI 预审中
+  const processing = app ? processingMap[app.id] : null
   const [expanded, setExpanded] = useState({})
   const [preview, setPreview] = useState(null)
   const [showCategory, setShowCategory] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null) // 待删除的材料对象
   const [deleting, setDeleting] = useState(false)
+  // 后端判定的缺失必备材料（公共五类 + 产品专属），由规则文件驱动
+  const [missingCats, setMissingCats] = useState([])
+  // AI 预审报告（用于详情页的预审摘要）
+  const [report, setReport] = useState(null)
+  // 已拒绝申请的被拒环节：3=人工复核，4=风控复核，-1=未拒绝
+  const [rejectedAt, setRejectedAt] = useState(-1)
 
   // 重新拉取材料清单（修改分类后调用）
   const reloadMaterials = () => {
     fetchMaterials(app.id)
       .then((rows) => setMaterials(app.id, rows.map(normalizeMaterial)))
+      .catch((error) => console.error(error))
+  }
+
+  // 刷新 AI 预审摘要与缺件提示（统一取预审落库快照 report.completeness）
+  const refreshReport = () => {
+    fetchReport(app.id)
+      .then((data) => {
+        setReport(data)
+        setMissingCats(buildMissingLabels(data?.completeness, app.product))
+      })
       .catch((error) => console.error(error))
   }
 
@@ -75,6 +107,7 @@ export default function DetailView() {
       reloadMaterials()
       // 删除后预审会重新判定，缺件时申请状态回到「待补件」
       refreshApp()
+      refreshReport()
     } catch (err) {
       toast(err.message || '删除失败，请稍后重试')
     } finally {
@@ -95,6 +128,19 @@ export default function DetailView() {
     setExpanded((prev) => ({ ...prev, [g.key]: !prev[g.key] }))
   }
 
+  // 申请状态变化（如后台 AI 预审完成）时刷新预审摘要与缺件提示
+  const appStatus = app?.status
+  const skipStatusWatch = useRef(true)
+  useEffect(() => {
+    if (skipStatusWatch.current) {
+      skipStatusWatch.current = false
+      return
+    }
+    if (!appStatus) return
+    refreshReport()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appStatus])
+
   useEffect(() => {
     if (!app) return
     let cancelled = false
@@ -113,10 +159,47 @@ export default function DetailView() {
       .catch((error) => {
         if (!cancelled) console.error(error)
       })
+    // AI 预审摘要与缺件提示：统一读取预审落库快照，不再实时计算
+    fetchReport(app.id)
+      .then((data) => {
+        if (!cancelled) {
+          setReport(data)
+          setMissingCats(buildMissingLabels(data?.completeness, app.product))
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) console.error(error)
+      })
     return () => {
       cancelled = true
     }
   }, [app?.id, setMaterials, updateApp])
+
+  // 已拒绝申请：根据复核记录定位被拒环节（人工复核=3 / 风控复核=4）
+  useEffect(() => {
+    if (!app || app.status !== 'rejected') {
+      setRejectedAt(-1)
+      return undefined
+    }
+    let cancelled = false
+    Promise.allSettled([fetchRiskReviews(app.id), fetchManualReviews(app.id)])
+      .then(([riskRes, manualRes]) => {
+        if (cancelled) return
+        const riskDenied =
+          riskRes.status === 'fulfilled' &&
+          Array.isArray(riskRes.value) &&
+          riskRes.value.some((r) => r.decision === 'deny')
+        const manualDenied =
+          manualRes.status === 'fulfilled' &&
+          Array.isArray(manualRes.value) &&
+          manualRes.value.some((r) => r.decision === 'deny')
+        setRejectedAt(riskDenied ? 4 : manualDenied ? 3 : -1)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [app?.id, app?.status])
 
   if (!app) return <div className="page">申请不存在</div>
 
@@ -128,10 +211,48 @@ export default function DetailView() {
   }))
   const filled = groups.filter((g) => g.files.length).length
 
-  // 前五类为必备材料（不含「其他」），缺件时提示具体类别
-  const missingCats = groups
-    .filter((g) => g.key !== 'other' && !g.files.length)
-    .map((g) => g.label)
+  // AI 预审摘要：由预审报告中的规则匹配、风险信号与冲突项汇总
+  const ruleMatching = report?.rule_results
+  const ruleItems = ruleMatching?.rules || []
+  const riskSignals = report?.risk_signals || []
+  const conflicts = report?.conflicts || []
+  const lowConfidenceConflicts = conflicts.filter((c) => c.type === 'low_confidence')
+  const ruleConflicts = conflicts.filter((c) => c.type !== 'low_confidence')
+  const highRiskSignals = riskSignals.filter((s) => s.level === 'high')
+  const uncertainRules = ruleItems.filter(
+    (rule) => rule.result === 'uncertain' || (rule.kind === 'soft' && rule.result === 'fail')
+  )
+  const uncertainText =
+    uncertainRules.length === 0
+      ? '暂无存疑项'
+      : uncertainRules
+          .slice(0, 3)
+          .map(
+            (rule) =>
+              `${rule.rule_name}：实际 ${rule.actual || '—'}，要求 ${rule.expected || '—'}`
+          )
+          .join('；')
+  const primaryRisk = highRiskSignals[0] || riskSignals[0]
+  const primaryRiskText = primaryRisk
+    ? `${primaryRisk.title}${
+        primaryRisk.evidence?.detail ? `：${primaryRisk.evidence.detail}` : ''
+      }`
+    : '暂无风险信号'
+  const evidenceCount = ruleItems.filter((rule) => rule.evidence).length
+  const verdictTone =
+    report?.conclusion === 'pass'
+      ? 'pass'
+      : report?.conclusion === 'forbidden'
+        ? 'fail'
+        : 'uncertain'
+  const verdictLabel = report
+    ? { pass: '符合', forbidden: '不符合', attention: '基本符合', manual: '基本符合' }[
+        report.conclusion
+      ] || '待人工核验'
+    : '待生成'
+  const generatedAt = report?.created_at
+    ? String(report.created_at).replace('T', ' ').slice(0, 16)
+    : '—'
 
   return (
     <div className="page">
@@ -159,7 +280,30 @@ export default function DetailView() {
         </div>
       </div>
 
-      <Stepper active={STEP_IDX[app.status] ?? 3} />
+      {/* 后台处理阶段提示：材料检查中 / AI 预审中 */}
+      {processing === 'checking' && (
+        <div className="processing-banner">
+          <span className="processing-spinner" />
+          材料检查中：正在上传文件并进行 OCR 抽取与智能分类，完成后将自动进入 AI 预审…
+        </div>
+      )}
+      {processing === 'analyzing' && (
+        <div className="processing-banner">
+          <span className="processing-spinner" />
+          AI 预审中：材料检查完成，正在执行准入规则匹配与一致性校验…
+        </div>
+      )}
+
+      <Stepper
+        active={
+          rejectedAt >= 0
+            ? rejectedAt
+            : processing === 'analyzing'
+              ? 2
+              : (STEP_IDX[app.status] ?? 3)
+        }
+        rejectedAt={rejectedAt}
+      />
 
       <div className="stat-grid">
         <div className="card stat-card">
@@ -176,13 +320,21 @@ export default function DetailView() {
         </div>
         <div className="card stat-card">
           <div className="stat-label">材料合规 / 补件</div>
-          {missingCats.length ? (
+          {!report ? (
+            <div className="stat-value-sm">待预审</div>
+          ) : missingCats.length ? (
             <div className="stat-value-sm compliance-miss" title={missingCats.join('、')}>
               缺件：{missingCats.join('、')}
             </div>
           ) : (
             <div className="stat-value-sm compliance-ok">材料合规</div>
           )}
+          {app.supplementNote ? (
+            <div className="stat-note" title={app.supplementNote}>
+              补件说明{app.supplementSource === 'risk' ? '（风控退回）' : app.supplementSource === 'manual' ? '（人工复核退回）' : ''}
+              ：{app.supplementNote}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -287,10 +439,85 @@ export default function DetailView() {
         <section className="card panel">
           <div className="panel-head">
             <h3>AI 预审摘要</h3>
-            <div className="panel-meta">暂无预审报告</div>
+            <div className="panel-meta">
+              {report
+                ? `报告版本 ${report.version || '—'} · 规则版本 ${report.rule_version || '—'} · 生成于 ${generatedAt}`
+                : '暂无预审报告'}
+            </div>
           </div>
           <div className="panel-body">
-            <div className="mat-empty">该申请尚未生成 AI 预审报告。</div>
+            {!report ? (
+              <div className="mat-empty">该申请尚未生成 AI 预审报告。</div>
+            ) : (
+              <>
+                <div className={`ai-verdict ${verdictTone}`}>
+                  <div className="ai-verdict-title">
+                    准入初判：<b>{verdictLabel}</b>
+                  </div>
+                  <div className="ai-verdict-counts">
+                    <span className="pass">✓ {ruleMatching?.pass_count || 0} 项符合</span>
+                    <span className="uncertain">⚠ {ruleMatching?.uncertain_count || 0} 项存疑</span>
+                    <span className="fail">✕ {ruleConflicts.length} 项冲突</span>
+                  </div>
+                </div>
+
+                <div className="ai-summary-grid">
+                  <div>
+                    <div className="ai-summary-label">存疑项</div>
+                    <div className="ai-summary-box warn" title={uncertainText}>
+                      <span className="ai-summary-clip">{uncertainText}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="ai-summary-label">风险信号</div>
+                    <div className="ai-summary-box risk" title={primaryRiskText}>
+                      <span className="ai-summary-clip">{primaryRiskText}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="ai-summary-label">
+                      低置信项（{lowConfidenceConflicts.length}）
+                    </div>
+                    <ul className="ai-summary-list">
+                      {lowConfidenceConflicts.length === 0 ? (
+                        <li className="empty">暂无低置信项</li>
+                      ) : (
+                        lowConfidenceConflicts.map((item, idx) => (
+                          <li key={`low-${idx}`}>{item.reason}</li>
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                  <div>
+                    <div className="ai-summary-label">证据引用</div>
+                    <div className="ai-summary-box evidence">
+                      <span>已自动关联 {evidenceCount} 处证据</span>
+                      <button
+                        className="ai-summary-link"
+                        onClick={() => navigate(`/report/${app.id}`)}
+                      >
+                        查看链路
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="ai-summary-stats">
+                  <div>
+                    <strong>{ruleConflicts.length}</strong>
+                    <span>规则冲突</span>
+                  </div>
+                  <div>
+                    <strong>{highRiskSignals.length}</strong>
+                    <span>高风险信号</span>
+                  </div>
+                  <div>
+                    <strong>{Math.round(report.pass_rate || 0)}%</strong>
+                    <span>预估通过率</span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           <div className="panel-foot right">
             <button className="btn btn-secondary" onClick={() => navigate(`/report/${app.id}`)}>
@@ -310,6 +537,7 @@ export default function DetailView() {
           onUploaded={() => {
             reloadMaterials()
             refreshApp()
+            refreshReport()
           }}
         />
       ) : null}
@@ -324,6 +552,7 @@ export default function DetailView() {
           onSaved={() => {
             reloadMaterials()
             refreshApp()
+            refreshReport()
           }}
         />
       ) : null}

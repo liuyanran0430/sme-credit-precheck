@@ -133,6 +133,13 @@
   color: var(--warn);
 }
 
+.risk-ai-summary {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--slate-600);
+}
+
 .quote {
   font-size: 12.5px;
   color: var(--slate-600);
@@ -140,10 +147,97 @@
   line-height: 1.7;
 }
 
+/* 客户经理复核意见 */
+.review-opinion {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review-opinion .info-row .v {
+  max-width: 70%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 完整预审包弹窗 */
+.pkg-loading,
+.pkg-empty {
+  text-align: center;
+  color: var(--slate-400);
+  font-size: 13px;
+  padding: 18px 0;
+}
+
+.pkg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 查看弹窗左右分栏：固定高度，左右两栏各自独立滚动，避免内容裁切 */
+.pkg-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 14px;
+  align-items: stretch;
+  height: calc(90vh - 150px);
+  min-height: 0;
+}
+
+.pkg-col-report {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* 报告分区不收缩，超出部分由左栏滚动条滚动展示 */
+.pkg-col-report > * {
+  flex: none;
+}
+
+.pkg-col-materials {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pkg-col-materials .section-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+.pkg-col-materials .section-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pkg-col-materials .cat-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 分区不收缩，空间不足时整体滚动而非压扁裁切 */
+.pkg-col-materials .cat-section {
+  flex: none;
+}
+
 /* 决策按钮 */
 .decision-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
 }
 
@@ -190,6 +284,12 @@
   border-color: var(--warn);
   background: #fffbeb;
   color: #b45309;
+}
+
+.decision.deny.sel {
+  border-color: var(--risk);
+  background: #fef2f2;
+  color: #b91c1c;
 }
 
 .decision.more.sel {

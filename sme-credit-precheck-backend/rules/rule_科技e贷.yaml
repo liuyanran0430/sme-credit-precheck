@@ -1,0 +1,153 @@
+# ============================================================
+# 准入规则文件 —— 科技e贷（产品前缀 AE）
+# 版本：v2026-10-28
+# 说明：面向科技型中小企业，重点看高新技术资质、研发投入、
+#       知识产权；营收门槛适度放宽。高新技术企业证书、
+#       知识产权证书等归入 "其他" 类材料参与核验。
+# ============================================================
+
+version: v2026-10-28
+updated_at: 2026-10-28
+product: 科技e贷
+product_code: AE
+
+# ---------- 一、必交材料清单 ----------
+required_categories:
+  # 科技资质类材料归入 "其他"
+  - category: other
+    min_count: 1
+    desc: 高新技术企业证书 / 专精特新证书 / 知识产权证书
+
+# ---------- 二、准入规则 ----------
+rules:
+
+  # ==== 强规则（FAIL → 直接拒绝）====
+  - rule_id: AE-H01
+    rule_name: 营业执照存续
+    kind: hard
+    source: business_license
+    field: registration_status
+    operator: in
+    value: [存续, 在营, 开业]
+    fail_action: reject
+    detail_zh: 营业执照状态需为存续/在营
+
+  - rule_id: AE-H02
+    rule_name: 成立年限 ≥ 1 年
+    kind: hard
+    source: business_license
+    field: established_months
+    operator: gte
+    value: 12
+    detail_zh: 成立不足 12 个月的企业不接受
+
+  - rule_id: AE-H03
+    rule_name: 具备高新技术或专精特新资质
+    kind: hard
+    source: other
+    field: has_tech_cert
+    operator: eq
+    value: true
+    detail_zh: 需提供高新技术企业证书 / 专精特新中小企业证书 / 至少 1 项知识产权（发明专利、软件著作权等）
+
+  - rule_id: AE-H04
+    rule_name: 征信授权书有效
+    kind: hard
+    source: credit_auth
+    field: auth_valid_months
+    operator: gte
+    value: 6
+    detail_zh: 授权书签署日期需在近 6 个月内
+
+  # ==== 弱规则（FAIL 不拦截，但影响打分 / 评级）====
+  - rule_id: AE-S01
+    rule_name: 近 6 月流水贷方合计 ≥ 年营收 30%
+    kind: soft
+    source: [bank_statement, financial_report]
+    field: inflow_to_revenue
+    operator: gte
+    value: 0.30
+    detail_zh: 科技企业轻资产、高成长，营收门槛适度放宽
+
+  - rule_id: AE-S02
+    rule_name: 资产负债率 ≤ 60%
+    kind: soft
+    source: financial_report
+    field: debt_ratio
+    operator: lte
+    value: 0.60
+    detail_zh: 科技企业轻资产，负债率不宜过高
+
+  - rule_id: AE-S03
+    rule_name: 研发费用加计扣除或高新技术企业资格有效
+    kind: soft
+    source: tax_return
+    field: has_rd_deduction
+    operator: eq
+    value: true
+    detail_zh: 纳税申报表需体现研发费用加计扣除或高新技术企业优惠税率
+
+  - rule_id: AE-S04
+    rule_name: 申请金额 ≤ 年营收 × 50%
+    kind: soft
+    source: [application, financial_report]
+    field: loan_to_revenue
+    operator: lte
+    value: 0.50
+    detail_zh: 科技e贷可适度提高授信比例
+
+  - rule_id: AE-S05
+    rule_name: 净利润或经营现金流为正
+    kind: soft
+    source: financial_report
+    field: profit_or_cashflow_positive
+    operator: eq
+    value: true
+    detail_zh: 允许早期亏损，但至少经营现金流需为正
+
+  - rule_id: AE-S06
+    rule_name: 纳税申报无重大欠税
+    kind: soft
+    source: tax_return
+    field: has_major_tax_debt
+    operator: eq
+    value: false
+    detail_zh: 如有重大欠税提示关注
+
+  - rule_id: AE-S07
+    rule_name: 知识产权数量 ≥ 1 项
+    kind: soft
+    source: other
+    field: ip_count
+    operator: gte
+    value: 1
+    detail_zh: 有发明专利 / 软件著作权 / 商标等知识产权加分项
+
+# ---------- 三、评分与等级 ----------
+scoring:
+  hard_rules_reject: true
+  soft_rule_score: 14            # 每条弱规则 PASS +14 分，7 条满分 98
+  base_score: 2
+  level_thresholds:
+    A: [90, 100]
+    B: [75, 89]
+    C: [60, 74]
+    D: [0, 59]
+  level_label:
+    A: 优秀
+    B: 良好
+    C: 一般
+    D: 较差
+  level_note:
+    A: 可自动审批
+    B: 建议优先审批
+    C: 需人工复核后审批
+    D: 谨慎受理或建议降额
+
+# ---------- 四、结论口径 ----------
+conclusion_logic:
+  hard_rule_fail: reject
+  completeness_issue: manual
+  consistency_high_fail: attention
+  soft_rule_fail_count_ge_3: attention
+  else: pass

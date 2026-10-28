@@ -1,0 +1,139 @@
+# ============================================================
+# 准入规则文件 —— 小微快贷（产品前缀 AK）
+# 版本：v2026-10-28
+# 说明：小微快贷主打轻资料，财务报表可选，流水要求 6 个月。
+# ============================================================
+
+version: v2026-10-28
+updated_at: 2026-10-28
+product: 小微快贷
+product_code: AK
+
+# ---------- 一、必交材料清单 ----------
+
+# ---------- 二、准入规则 ----------
+rules:
+
+  # ==== 强规则（FAIL → 直接拒绝）====
+  - rule_id: AK-H01
+    rule_name: 营业执照存续
+    kind: hard
+    source: business_license
+    field: registration_status
+    operator: in
+    value: [存续, 在营, 开业]
+    fail_action: reject
+    detail_zh: 营业执照状态需为存续/在营，已吊销/注销直接拒绝
+
+  - rule_id: AK-H02
+    rule_name: 成立年限 ≥ 1 年
+    kind: hard
+    source: business_license
+    field: established_months
+    operator: gte
+    value: 12
+    detail_zh: 成立不足 12 个月的企业不接受（快贷门槛略低）
+
+  - rule_id: AK-H03
+    rule_name: 统一社会信用代码有效
+    kind: hard
+    source: business_license
+    field: credit_code_format
+    operator: eq
+    value: valid
+    detail_zh: 信用代码 18 位且校验位合法
+
+  - rule_id: AK-H04
+    rule_name: 征信授权书有效
+    kind: hard
+    source: credit_auth
+    field: auth_valid_months
+    operator: gte
+    value: 6
+    detail_zh: 授权书签署日期需在近 6 个月内
+
+  # ==== 弱规则（FAIL 不拦截，但影响打分 / 评级）====
+  - rule_id: AK-S01
+    rule_name: 6 个月流水贷方合计 ≥ 年营收 40%
+    kind: soft
+    source: [bank_statement, financial_report]
+    field: inflow_to_revenue
+    operator: gte
+    value: 0.40
+    detail_zh: 流水进账偏低提示经营规模与申报不符
+    note: 无财报时跳过此规则（uncertain）
+
+  - rule_id: AK-S02
+    rule_name: 6 个月无连续 2 个月借方 > 贷方
+    kind: soft
+    source: bank_statement
+    field: consecutive_outflow_months
+    operator: lte
+    value: 1
+    detail_zh: 连续两个月净流出提示经营压力
+
+  - rule_id: AK-S03
+    rule_name: 申请金额 ≤ 6 月流水贷方合计 × 10%
+    kind: soft
+    source: [application, bank_statement]
+    field: loan_to_inflow_6m
+    operator: lte
+    value: 0.10
+    detail_zh: 超过提示过度授信
+
+  - rule_id: AK-S04
+    rule_name: 申请金额 ≤ 300 万
+    kind: soft
+    source: application
+    field: apply_amount
+    operator: lte
+    value: 300
+    detail_zh: 快贷默认单户上限 300 万，超出需转经营贷
+
+  - rule_id: AK-S05
+    rule_name: 纳税申报无重大欠税
+    kind: soft
+    source: tax_return
+    field: has_major_tax_debt
+    operator: eq
+    value: false
+    detail_zh: 如有重大欠税提示关注
+
+  - rule_id: AK-S06
+    rule_name: 财报资产负债率 ≤ 75%（如有财报）
+    kind: soft
+    source: financial_report
+    field: debt_ratio
+    operator: lte
+    value: 0.75
+    detail_zh: 如有财报且负债率过高提示偿债能力不足
+    note: 无财报时跳过此规则（uncertain）
+
+# ---------- 三、评分与等级 ----------
+scoring:
+  hard_rules_reject: true
+  soft_rule_score: 16            # 每条弱规则 PASS +16 分，6 条满分 96
+  base_score: 4
+  level_thresholds:
+    A: [90, 100]
+    B: [75, 89]
+    C: [60, 74]
+    D: [0, 59]
+  level_label:
+    A: 优秀
+    B: 良好
+    C: 一般
+    D: 较差
+  level_note:
+    A: 可自动审批
+    B: 建议优先审批
+    C: 需人工复核后审批
+    D: 谨慎受理或建议降额
+
+# ---------- 四、结论口径 ----------
+conclusion_logic:
+  hard_rule_fail: reject
+  completeness_issue: manual
+  consistency_high_fail: attention
+  soft_rule_fail_count_ge_3: attention
+  else: pass

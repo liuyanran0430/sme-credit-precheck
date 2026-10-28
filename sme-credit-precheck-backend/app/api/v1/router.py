@@ -33,6 +33,11 @@ api_router.include_router(
     dependencies=auth_required,
 )
 
+# 风控复核记录查询为只读接口，登录即可访问
+api_router.include_router(
+    risk.read_router, prefix="/risk", tags=["风控复核"], dependencies=auth_required
+)
+
 # 风控队列仅风控人员与管理员可访问
 api_router.include_router(
     risk.router,

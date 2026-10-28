@@ -11,6 +11,7 @@ class ApplicationStatus(str, enum.Enum):
     MANUAL = "manual"  # 待人工核验
     RISK = "risk"  # 待风控复核
     APPROVED = "approved"  # 已审批
+    REJECTED = "rejected"  # 已否决
 
 
 class MaterialStatus(str, enum.Enum):
@@ -38,6 +39,7 @@ class ReviewDecision(str, enum.Enum):
     CONDITIONAL = "conditional"  # 有条件通过
     REJECT = "reject"  # 退回补件
     FURTHER = "further"  # 补充调查
+    DENY = "deny"  # 否决申请
 
 
 class UserRole(str, enum.Enum):

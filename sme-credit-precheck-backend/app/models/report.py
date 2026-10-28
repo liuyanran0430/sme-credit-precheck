@@ -20,13 +20,16 @@ class AiReport(Base, TimestampMixin):
     )
     version: Mapped[str] = mapped_column(String(16), default="v1", comment="报告版本")
     rule_version: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="规则版本")
+    rule_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True, comment="本次预审使用的规则文件快照"
+    )
     conclusion: Mapped[AiConclusion] = mapped_column(enum_column(AiConclusion))
     summary: Mapped[str | None] = mapped_column(Text, nullable=True, comment="预审结论摘要")
     pass_rate: Mapped[Decimal | None] = mapped_column(
         Numeric(5, 2), nullable=True, comment="预估通过率（%）"
     )
-    rule_results: Mapped[list[dict[str, Any]] | None] = mapped_column(
-        JSON, nullable=True, comment="准入规则逐条匹配结果"
+    rule_results: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True, comment="准入规则逐条匹配结果（含评分与等级）"
     )
     risk_signals: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSON, nullable=True, comment="风险信号汇总"

@@ -1,0 +1,144 @@
+# ============================================================
+# 准入规则文件 —— 经营性抵押贷（产品前缀 AJ）
+# 版本：v2026-10-28
+# 说明：有抵押物兜底，可适度放宽营收要求；需额外提供抵押物
+#       评估报告或租赁合同作为 "其他" 类材料参与核验。
+# ============================================================
+
+version: v2026-10-28
+updated_at: 2026-10-28
+product: 经营性抵押贷
+product_code: AJ
+
+# ---------- 一、必交材料清单 ----------
+required_categories:
+  # 抵押物证明类材料归入 "其他"，但至少需 1 份
+  - category: other
+    min_count: 1
+    desc: 抵押合同 / 抵押物评估报告 / 房产证 / 租赁合同
+
+# ---------- 二、准入规则 ----------
+rules:
+
+  # ==== 强规则（FAIL → 直接拒绝）====
+  - rule_id: AJ-H01
+    rule_name: 营业执照存续
+    kind: hard
+    source: business_license
+    field: registration_status
+    operator: in
+    value: [存续, 在营, 开业]
+    fail_action: reject
+    detail_zh: 营业执照状态需为存续/在营
+
+  - rule_id: AJ-H02
+    rule_name: 成立年限 ≥ 1 年
+    kind: hard
+    source: business_license
+    field: established_months
+    operator: gte
+    value: 12
+    detail_zh: 成立不足 12 个月的企业不接受
+
+  - rule_id: AJ-H03
+    rule_name: 征信授权书有效
+    kind: hard
+    source: credit_auth
+    field: auth_valid_months
+    operator: gte
+    value: 6
+    detail_zh: 授权书签署日期需在近 6 个月内
+
+  - rule_id: AJ-H04
+    rule_name: 抵押物材料已提供
+    kind: hard
+    source: other
+    field: has_collateral_doc
+    operator: eq
+    value: true
+    detail_zh: 需提供抵押合同 / 评估报告 / 房产证等抵押物证明
+
+  # ==== 弱规则（FAIL 不拦截，但影响打分 / 评级）====
+  - rule_id: AJ-S01
+    rule_name: 近 6 月流水贷方合计 ≥ 年营收 50%
+    kind: soft
+    source: [bank_statement, financial_report]
+    field: inflow_to_revenue
+    operator: gte
+    value: 0.50
+    detail_zh: 有抵押物兜底，要求略低于经营贷
+
+  - rule_id: AJ-S02
+    rule_name: 资产负债率 ≤ 80%
+    kind: soft
+    source: financial_report
+    field: debt_ratio
+    operator: lte
+    value: 0.80
+    detail_zh: 抵押贷容忍度较高，但超过 80% 提示关注
+
+  - rule_id: AJ-S03
+    rule_name: 申请金额 ≤ 抵押物评估价值 × 70%
+    kind: soft
+    source: [application, other]
+    field: loan_to_collateral
+    operator: lte
+    value: 0.70
+    detail_zh: 超过 70% 提示抵押率过高，需追加担保或降额
+    note: 抵押物价值需从评估报告 OCR 抽取，无则 uncertain
+
+  - rule_id: AJ-S04
+    rule_name: 申请金额 ≤ 年营收 × 40%
+    kind: soft
+    source: [application, financial_report]
+    field: loan_to_revenue
+    operator: lte
+    value: 0.40
+    detail_zh: 超过提示过度授信
+
+  - rule_id: AJ-S05
+    rule_name: 净利润不为负
+    kind: soft
+    source: financial_report
+    field: net_profit
+    operator: gte
+    value: 0
+    detail_zh: 有抵押物可容忍轻度亏损，但连续亏损提示经营恶化
+
+  - rule_id: AJ-S06
+    rule_name: 纳税申报无重大欠税
+    kind: soft
+    source: tax_return
+    field: has_major_tax_debt
+    operator: eq
+    value: false
+    detail_zh: 如有重大欠税提示关注
+
+# ---------- 三、评分与等级 ----------
+scoring:
+  hard_rules_reject: true
+  soft_rule_score: 16            # 每条弱规则 PASS +16 分，6 条满分 96
+  base_score: 4
+  level_thresholds:
+    A: [90, 100]
+    B: [75, 89]
+    C: [60, 74]
+    D: [0, 59]
+  level_label:
+    A: 优秀
+    B: 良好
+    C: 一般
+    D: 较差
+  level_note:
+    A: 可自动审批
+    B: 建议优先审批
+    C: 需人工复核后审批
+    D: 谨慎受理或建议降额
+
+# ---------- 四、结论口径 ----------
+conclusion_logic:
+  hard_rule_fail: reject
+  completeness_issue: manual
+  consistency_high_fail: attention
+  soft_rule_fail_count_ge_3: attention
+  else: pass

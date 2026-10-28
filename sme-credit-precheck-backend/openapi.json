@@ -857,13 +857,62 @@
         }
       }
     },
+    "/api/v1/applications/{app_no}/report/export": {
+      "get": {
+        "tags": [
+          "AI 预审"
+        ],
+        "summary": "导出 AI 预审报告",
+        "description": "将最新一版 AI 预审报告导出为 PDF 文件，内容取自已落库的报告快照。",
+        "operationId": "export_report_api_v1_applications__app_no__report_export_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "app_no",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "App No"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "预审报告尚未生成"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/applications/{app_no}/report/completeness": {
       "get": {
         "tags": [
           "AI 预审"
         ],
         "summary": "材料完整性分析",
-        "description": "按必备材料清单、内容可读性与特殊要求（流水覆盖超过 6 个月、财务报表三表齐全）判断材料完整性；一致性校验暂未接入。",
+        "description": "五大公共必交材料 + 规则文件中该产品专属必交材料，校验内容可读性与特殊要求（流水覆盖超过 6 个月、财务报表三表齐全）。",
         "operationId": "get_completeness_api_v1_applications__app_no__report_completeness_get",
         "security": [
           {
@@ -1423,11 +1472,8 @@
           "rule_results": {
             "anyOf": [
               {
-                "items": {
-                  "additionalProperties": true,
-                  "type": "object"
-                },
-                "type": "array"
+                "additionalProperties": true,
+                "type": "object"
               },
               {
                 "type": "null"
@@ -1490,6 +1536,12 @@
             ],
             "title": "Consistency",
             "description": "材料一致性分析结果"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "报告生成时间"
           }
         },
         "type": "object",
@@ -1503,7 +1555,8 @@
           "pass_rate",
           "rule_results",
           "risk_signals",
-          "conflicts"
+          "conflicts",
+          "created_at"
         ],
         "title": "AiReportRead"
       },
@@ -1964,6 +2017,18 @@
             "type": "boolean",
             "title": "Satisfied",
             "description": "是否满足最小份数要求"
+          },
+          "requirement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requirement",
+            "description": "产品专属必交材料的具体要求（规则文件 desc）"
           }
         },
         "type": "object",
@@ -3038,6 +3103,55 @@
             "maxLength": 200,
             "title": "Rule Name"
           },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "hard",
+              "soft"
+            ],
+            "title": "Kind",
+            "description": "规则类型：强规则 / 弱规则",
+            "default": "soft"
+          },
+          "operator": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operator",
+            "description": "比较操作符"
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected",
+            "description": "规则要求的文本表达式"
+          },
+          "actual": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual",
+            "description": "客户侧实际取值"
+          },
           "result": {
             "$ref": "#/components/schemas/RuleMatchStatus"
           },
@@ -3080,6 +3194,45 @@
             "maxLength": 32,
             "title": "Rule Version"
           },
+          "score": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Score",
+            "description": "准入评分",
+            "default": 0
+          },
+          "level": {
+            "type": "string",
+            "maxLength": 4,
+            "title": "Level",
+            "description": "评分等级 A/B/C/D",
+            "default": "D"
+          },
+          "level_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Label",
+            "description": "等级中文标签"
+          },
+          "level_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level Note",
+            "description": "等级处理建议"
+          },
           "pass_count": {
             "type": "integer",
             "minimum": 0.0,
@@ -3089,6 +3242,27 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Total Count"
+          },
+          "hard_fail_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Hard Fail Count",
+            "description": "强规则未通过条数",
+            "default": 0
+          },
+          "soft_fail_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Soft Fail Count",
+            "description": "弱规则未通过条数",
+            "default": 0
+          },
+          "uncertain_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Uncertain Count",
+            "description": "证据不足条数",
+            "default": 0
           },
           "rules": {
             "items": {

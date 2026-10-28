@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_application_or_404, get_current_user, get_db
 from app.core import config
 from app.models.application import Application
-from app.models.enums import ApplicationStatus
+from app.models.enums import ApplicationStatus, ReviewDecision
 from app.models.material import Material
 from app.models.report import AiReport
 from app.models.review import ManualReview, RiskReview
@@ -75,6 +75,35 @@ def list_applications(
     rows = db.scalars(
         stmt.order_by(Application.id.desc()).offset((page - 1) * page_size).limit(page_size)
     ).all()
+
+    # 带出每个申请最新一版 AI 预审结论（供列表页与风控队列展示）
+    if rows:
+        latest_report = (
+            select(AiReport.app_id, func.max(AiReport.id).label("max_id"))
+            .where(AiReport.app_id.in_([row.id for row in rows]))
+            .group_by(AiReport.app_id)
+            .subquery()
+        )
+        conclusion_map = dict(
+            db.execute(
+                select(AiReport.app_id, AiReport.conclusion).join(
+                    latest_report,
+                    (AiReport.app_id == latest_report.c.app_id)
+                    & (AiReport.id == latest_report.c.max_id),
+                )
+            ).all()
+        )
+        for row in rows:
+            row.conclusion = conclusion_map.get(row.id)
+
+        # 标记曾被风控退回补件的申请（补齐回流风控队列时供前端提示）
+        returned_app_ids = set(
+            db.scalars(
+                select(RiskReview.app_id).where(RiskReview.decision == ReviewDecision.REJECT)
+            ).all()
+        )
+        for row in rows:
+            row.risk_returned = row.id in returned_app_ids
 
     return Page[ApplicationRead](items=list(rows), total=total, page=page, page_size=page_size)
 

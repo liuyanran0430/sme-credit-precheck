@@ -35,8 +35,8 @@ export function matStatusText(m) {
   return '待抽取'
 }
 
-// 申请状态对应的步骤索引
-export const STEP_IDX = { check: 1, supplement: 1, manual: 3, pending: 3, risk: 4 }
+// 申请状态对应的步骤索引（审批环节暂无入口，已审批停留在审批节点显示数字 6）
+export const STEP_IDX = { check: 1, supplement: 1, manual: 3, pending: 3, risk: 4, rejected: 3, approved: 5 }
 
 // 步骤定义
 export const STEPS = ['已提交', '材料检查', 'AI 预审', '人工复核', '风控复核', '审批']

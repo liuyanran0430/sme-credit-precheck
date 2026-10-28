@@ -2,10 +2,12 @@
 
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,27 +20,38 @@ from app.schemas.ai_analysis import (
     CategoryCompleteness,
     CompletenessIssue,
     CompletenessResult,
+    ConflictItem,
     ConflictSummary,
+    ConflictType,
     ConsistencyCheck,
     ConsistencyResult,
     ConsistencySeverity,
     ConsistencyStatus,
     ConsistencyValue,
     DEFAULT_REQUIRED_CATEGORIES,
-    MaterialAnalysisRequest,
-    MaterialAnalysisResponse,
+    RiskEvidence,
+    RiskLevel,
+    RiskSignal,
     RiskSummary,
+    RuleEvidence,
+    RuleMatchItem,
     RuleMatchResult,
+    RuleMatchStatus,
 )
 from app.schemas.ai_classification import (
     CATEGORY_LABELS,
+    LOW_CONFIDENCE_THRESHOLD,
     MaterialCategory,
     MaterialClassifyInput,
     MimeType,
 )
 from app.services.classifier import load_text
+from app.services.rule_config import extra_required_categories, load_rule_config
 
 # ---------------------------------------------------------------- 完整性规则
+
+# 五大公共必交材料：所有产品均必须提供（产品专属材料从规则文件读取）
+CORE_REQUIRED_CATEGORIES: list[MaterialCategory] = list(DEFAULT_REQUIRED_CATEGORIES)
 
 # 银行流水需覆盖超过该月数
 MIN_BANK_STATEMENT_MONTHS = 6
@@ -115,13 +128,19 @@ def _statement_months(texts: Sequence[str]) -> set[tuple[int, int]]:
     return months
 
 
-def analyze_completeness(materials: Sequence[Material]) -> CompletenessResult:
+def analyze_completeness(
+    materials: Sequence[Material], product: str | None = None
+) -> CompletenessResult:
     """2.1 材料完整性判断。
 
     判定规则：
-    1. 每类必备材料至少 1 份（营业执照、银行流水、财务报表、纳税申报表、征信授权书）；
-    2. 内容可读：OCR 文本为空视为内容不完整，需重传；
-    3. 特殊要求：银行流水需覆盖超过 6 个月，财务报表需资产负债表、利润表、现金流量表三表齐全。
+    1. 五大公共必交材料每类至少 1 份（营业执照、银行流水、财务报表、
+       纳税申报表、征信授权书）；
+    2. 产品专属必交材料从 rules/rule_<产品>.yaml 的 required_categories
+       读取，缺失同样提示补件；
+    3. 内容可读：OCR 文本为空视为内容不完整，需重传；
+    4. 特殊要求：银行流水需覆盖超过 6 个月，财务报表需资产负债表、
+       利润表、现金流量表三表齐全。
     """
     counts = {category: 0 for category in MaterialCategory}
     texts: dict[int, str] = {}
@@ -129,15 +148,45 @@ def analyze_completeness(materials: Sequence[Material]) -> CompletenessResult:
         counts[_category_of(material)] += 1
         texts[material.id] = _read_text(material)
 
-    required = list(DEFAULT_REQUIRED_CATEGORIES)
-    missing = [category for category in required if counts[category] == 0]
+    # 公共必交材料 + 规则文件中的产品专属必交材料
+    required = list(CORE_REQUIRED_CATEGORIES)
+    min_counts = {category: 1 for category in required}
+    extra_desc: dict[MaterialCategory, str] = {}
+    for category, min_count, desc in extra_required_categories(product or ""):
+        if category not in required:
+            required.append(category)
+        min_counts[category] = max(min_counts.get(category, 1), min_count)
+        if desc:
+            extra_desc[category] = desc
+
+    missing = [category for category in required if counts[category] < min_counts[category]]
+    core_missing = [category for category in missing if category in CORE_REQUIRED_CATEGORIES]
+    extra_missing = [category for category in missing if category not in CORE_REQUIRED_CATEGORIES]
+
     issues: list[CompletenessIssue] = []
 
-    if missing:
+    if core_missing:
         issues.append(
             CompletenessIssue(
                 type="missing",
-                message="缺少必备材料：" + "、".join(CATEGORY_LABELS[c] for c in missing),
+                message="缺少必备材料：" + "、".join(CATEGORY_LABELS[c] for c in core_missing),
+            )
+        )
+
+    if extra_missing:
+        parts: list[str] = []
+        for category in extra_missing:
+            label = CATEGORY_LABELS[category]
+            desc = extra_desc.get(category)
+            need = min_counts[category]
+            if counts[category] == 0:
+                parts.append(f"{label}（{desc}）" if desc else label)
+            else:
+                parts.append(f"{label}需至少 {need} 份，当前 {counts[category]} 份")
+        issues.append(
+            CompletenessIssue(
+                type="missing",
+                message="缺少产品专属必备材料：" + "、".join(parts),
             )
         )
 
@@ -198,7 +247,9 @@ def analyze_completeness(materials: Sequence[Material]) -> CompletenessResult:
                 )
             )
 
-    satisfied_required = sum(1 for category in required if counts[category] > 0)
+    satisfied_required = sum(
+        1 for category in required if counts[category] >= min_counts[category]
+    )
     return CompletenessResult(
         is_complete=not issues,
         required=required,
@@ -211,7 +262,8 @@ def analyze_completeness(materials: Sequence[Material]) -> CompletenessResult:
                 label=CATEGORY_LABELS[category],
                 required=category in required,
                 count=counts[category],
-                satisfied=counts[category] > 0,
+                satisfied=counts[category] >= min_counts.get(category, 1),
+                requirement=extra_desc.get(category),
             )
             for category in MaterialCategory
         ],
@@ -224,37 +276,27 @@ def generate_report(
 ) -> AiReport:
     """材料分类完成后自动执行 AI 预审：生成或更新该申请的预审报告。
 
-    预审包含材料完整性判断与一致性校验（P1），结论映射：
-    - 必备材料缺失：manual（需补件后重新预审）
-    - 存在完整性异常 / 高严重度不一致：attention
-    - 无问题：pass
+    预审包含材料完整性判断、一致性校验（P1）与按下发 YAML 执行的
+    准入规则逐条匹配，结论按规则文件的 conclusion_logic 推导。
     """
-    completeness = analyze_completeness(materials)
+    # 兜底 OCR 回写：补齐缺失的识别文本并随本次事务落库，
+    # 避免历史材料因 ocr_text 为空在每次预审时重复识别
+    for material in materials:
+        if not material.ocr_text:
+            text = _read_text(material)
+            if text.strip():
+                material.ocr_text = text
+
+    completeness = analyze_completeness(materials, app.product)
     consistency = check_consistency(app, materials)
-    high_conflicts = [
-        check
-        for check in consistency.checks
-        if check.status == ConsistencyStatus.FAIL
-        and check.severity == ConsistencySeverity.HIGH
-    ]
 
-    if completeness.missing:
-        conclusion = AiConclusion.MANUAL
-    elif completeness.issues or high_conflicts:
-        conclusion = AiConclusion.ATTENTION
-    else:
-        conclusion = AiConclusion.PASS
-
-    summary_parts = [issue.message for issue in completeness.issues]
-    if high_conflicts:
-        summary_parts.append(
-            "一致性高风险：" + "、".join(check.check_item for check in high_conflicts)
-        )
-    summary = (
-        "；".join(summary_parts)
-        if summary_parts
-        else "必备材料齐全、内容可读，材料完整性与一致性校验通过"
-    )
+    # 绑定本次预审使用的规则版本，并快照规则文件内容：
+    # 后续修改 YAML 不影响历史报告的判定依据
+    rule_config = load_rule_config(app.product)
+    rule_matching = match_rules(app, materials, consistency, rule_config)
+    risk_summary = summarize_risk_signals(completeness, consistency, rule_matching)
+    conflict_summary = collect_conflicts(materials, consistency, rule_matching)
+    summary = build_summary(completeness, consistency, rule_matching, rule_config)
 
     report = db.scalar(
         select(AiReport).where(AiReport.app_id == app.id).order_by(AiReport.id.desc())
@@ -263,13 +305,25 @@ def generate_report(
         report = AiReport(app_id=app.id, version="v1")
         db.add(report)
 
-    report.conclusion = conclusion
-    report.summary = summary
-    report.pass_rate = Decimal(str(round(completeness.coverage_rate * 100, 2)))
+    report.conclusion = summary.conclusion
+    report.summary = summary.summary
+    report.pass_rate = Decimal(str(round(summary.pass_rate, 2)))
     report.completeness = completeness.model_dump(mode="json")
     report.consistency = consistency.model_dump(mode="json")
+    report.rule_results = rule_matching.model_dump(mode="json")
+    report.risk_signals = [item.model_dump(mode="json") for item in risk_summary.risk_signals]
+    report.conflicts = [item.model_dump(mode="json") for item in conflict_summary.conflicts]
+
+    report.rule_version = (
+        str(rule_config["version"]) if rule_config and rule_config.get("version") else None
+    )
+    report.rule_snapshot = jsonable_encoder(rule_config) if rule_config else None
+
+    # 同步申请表 AI 摘要，供申请列表展示最新预审结论
+    app.ai_summary = summary.summary
 
     # 预审完成后推进申请进度：材料不齐 → 待补件；齐全 → 待人工核验
+    # 风控退回的补件（supplement_source=risk）补齐后直接回流风控复核队列
     # 已进入风控复核及之后的状态不回退
     if (
         not completeness.is_complete
@@ -281,7 +335,12 @@ def generate_report(
         ApplicationStatus.CHECK,
         ApplicationStatus.SUPPLEMENT,
     }:
-        app.status = ApplicationStatus.MANUAL
+        back_to_risk = (
+            app.status == ApplicationStatus.SUPPLEMENT
+            and app.supplement_source == "risk"
+        )
+        app.status = ApplicationStatus.RISK if back_to_risk else ApplicationStatus.MANUAL
+        app.supplement_source = None
 
     db.commit()
     db.refresh(report)
@@ -949,42 +1008,821 @@ def _missing_months(months: Sequence[tuple[int, int]]) -> list[str]:
     return missing
 
 
-def match_rules(payload: MaterialAnalysisRequest) -> RuleMatchResult:
-    """2.2 准入规则匹配：逐条输出 pass / fail / uncertain 及证据。"""
-    raise NotImplementedError("准入规则匹配逻辑待实现")
+# ---------------------------------------------------------------- 准入规则匹配
+
+# 营业执照成立日期，如「成立日期2019年08月28日」
+_ESTABLISHED_RE = re.compile(
+    r"成立日期\s*[：:]?\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日"
+)
+# 营业期限，用于执照未直接标注登记状态时兜底推断存续/到期
+_BUSINESS_TERM_RE = re.compile(
+    r"营业期限\s*[：:]?\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*至\s*"
+    r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日"
+)
+# 统一社会信用代码校验字符集与加权因子（GB 32100）
+_CREDIT_CODE_CHARSET = "0123456789ABCDEFGHJKLMNPQRTUWXY"
+_CREDIT_CODE_WEIGHTS = (1, 3, 9, 27, 19, 26, 16, 17, 20, 29, 25, 13, 8, 24, 10, 30, 28)
+
+# 抵押物评估价值标签
+_COLLATERAL_LABELS = ("评估价值", "评估值", "抵押价值", "评估金额")
+_TECH_CERT_KEYWORDS = (
+    "高新技术企业",
+    "专精特新",
+    "知识产权",
+    "发明专利",
+    "软件著作权",
+    "科技型中小企业",
+)
+_IP_KEYWORDS = ("发明专利", "软件著作权", "实用新型", "商标")
+_COLLATERAL_KEYWORDS = (
+    "抵押合同",
+    "抵押物",
+    "评估报告",
+    "房地产权证",
+    "房产证",
+    "不动产",
+    "租赁合同",
+)
+
+_ACTION_TO_CONCLUSION = {
+    "reject": AiConclusion.FORBIDDEN,
+    "manual": AiConclusion.MANUAL,
+    "attention": AiConclusion.ATTENTION,
+    "pass": AiConclusion.PASS,
+}
+
+_OPERATOR_LABELS = {
+    "eq": "=",
+    "neq": "≠",
+    "gt": ">",
+    "gte": "≥",
+    "lt": "<",
+    "lte": "≤",
+    "in": "属于",
+    "not_in": "不属于",
+    "contains": "包含",
+}
+
+
+@dataclass
+class RuleField:
+    """规则字段的取值、证据来源与展示文本。"""
+
+    value: object
+    source: str | None = None
+    display: str | None = None
+
+
+def _months_between(start: date, end: date) -> int:
+    """两个日期相差的完整月数。"""
+    return (end.year - start.year) * 12 + (end.month - start.month)
+
+
+def _license_status(text: str) -> str | None:
+    """从营业执照识别登记状态；未直接标注时按营业期限兜底推断。"""
+    compact = _compact(text)
+    for status in ("存续", "在营", "开业", "吊销", "注销", "迁出", "非正常"):
+        if status in compact:
+            return status
+    match = _BUSINESS_TERM_RE.search(text)
+    if not match:
+        return None
+    end_year, end_month, end_day = (int(group) for group in match.groups()[3:])
+    try:
+        term_end = date(end_year, end_month, end_day)
+    except ValueError:
+        return None
+    return "存续" if term_end >= date.today() else "营业期限已届满"
+
+
+def _license_established_months(text: str, ref_date: date) -> int | None:
+    """营业执照成立日期至参考日期的月数。"""
+    match = _ESTABLISHED_RE.search(text)
+    if not match:
+        return None
+    try:
+        started_at = date(*(int(group) for group in match.groups()))
+    except ValueError:
+        return None
+    return max(_months_between(started_at, ref_date), 0)
+
+
+def _credit_code_valid(code: str | None) -> bool | None:
+    """校验统一社会信用代码：18 位且校验位合法。"""
+    if not code:
+        return None
+    normalized = code.strip().upper()
+    if len(normalized) != 18 or any(ch not in _CREDIT_CODE_CHARSET for ch in normalized):
+        return False
+    total = sum(
+        _CREDIT_CODE_CHARSET.index(ch) * weight
+        for ch, weight in zip(normalized[:17], _CREDIT_CODE_WEIGHTS)
+    )
+    check_value = 31 - total % 31
+    if check_value == 31:
+        check_value = 0
+    return normalized[-1] == _CREDIT_CODE_CHARSET[check_value]
+
+
+def _texts_by_category(
+    materials: Sequence[Material], category: MaterialCategory
+) -> list[str]:
+    return [
+        text
+        for text in (_read_text(material) for material in materials if _category_of(material) == category)
+        if text.strip()
+    ]
+
+
+def _financial_snapshot(texts: Sequence[str]) -> dict[str, float | None]:
+    """汇总财报中的营收、利润、资产负债、货币资金与经营现金流。"""
+    snapshot: dict[str, float | None] = {
+        "revenue": None,
+        "profit": None,
+        "net_profit": None,
+        "assets": None,
+        "liabilities": None,
+        "equity": None,
+        "cash": None,
+        "operating_cash": None,
+    }
+    for text in texts:
+        fields = _extract_financial(text)
+        for key in ("revenue", "profit", "assets", "liabilities", "equity"):
+            value = fields.get(key)
+            if snapshot[key] is None and isinstance(value, (int, float)):
+                snapshot[key] = float(value)
+        cash = _amounts_after(text, "货币资金", 2)
+        if snapshot["cash"] is None and cash:
+            snapshot["cash"] = float(cash[-1])
+        net_profit = _amounts_after(text, "净利润", 1)
+        if snapshot["net_profit"] is None and net_profit:
+            snapshot["net_profit"] = float(net_profit[0])
+        operating_cash = _amounts_after(text, "经营活动产生的现金流量净额", 1)
+        if snapshot["operating_cash"] is None and operating_cash:
+            snapshot["operating_cash"] = float(operating_cash[0])
+    return snapshot
+
+
+def _bank_entries(
+    materials: Sequence[Material],
+) -> list[tuple[tuple[int, int] | None, float, float | None, float | None]]:
+    """逐份流水提取（所属年月、贷方发生额、借方发生额、期末余额）。"""
+    entries: list[tuple[tuple[int, int] | None, float, float | None, float | None]] = []
+    for material in materials:
+        if _category_of(material) != MaterialCategory.BANK_STATEMENT:
+            continue
+        text = _read_text(material)
+        totals = _amounts_after(text, "本月合计", 3)
+        if not totals:
+            continue
+        period = _PERIOD_RE.search(text)
+        month = (int(period.group(1)), int(period.group(2))) if period else None
+        entries.append(
+            (
+                month,
+                float(totals[0]),
+                float(totals[1]) if len(totals) > 1 else None,
+                _amount_after_label(text, "期末余额"),
+            )
+        )
+    entries.sort(key=lambda item: item[0] or (0, 0))
+    return entries
+
+
+def _longest_consecutive_months(months: Sequence[tuple[int, int]]) -> int:
+    """无断月覆盖的最长连续月数。"""
+    points = sorted(set(months))
+    if not points:
+        return 0
+    longest = current = 1
+    for previous, current_point in zip(points, points[1:]):
+        gap = (current_point[0] - previous[0]) * 12 + (current_point[1] - previous[1])
+        current = current + 1 if gap == 1 else 1
+        longest = max(longest, current)
+    return longest
+
+
+def _max_consecutive_outflow(
+    entries: Sequence[tuple[tuple[int, int] | None, float, float | None, float | None]],
+) -> int:
+    """连续「借方发生额 > 贷方发生额」的最长月数。"""
+    longest = current = 0
+    for _, income, expense, _closing in entries:
+        if expense is not None and expense > income:
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+    return longest
+
+
+def _keyword_count(texts: Sequence[str], keywords: Sequence[str]) -> int:
+    return sum(
+        _compact(text).count(keyword) for text in texts for keyword in keywords
+    )
+
+
+def _collateral_value(texts: Sequence[str]) -> float | None:
+    """从抵押物评估材料中读取评估价值（元）。"""
+    for text in texts:
+        for label in _COLLATERAL_LABELS:
+            match = re.search(
+                label + r"[：:\s]*([\d,]+(?:\.\d+)?)\s*(万元)?", text
+            )
+            if not match:
+                continue
+            value = _to_amount(match.group(1))
+            return value * 10000 if match.group(2) else value
+    return None
+
+
+def _ratio_field(
+    numerator: float | None, denominator: float | None, source: str
+) -> RuleField:
+    if numerator is None or denominator is None or denominator <= 0:
+        return RuleField(None, source)
+    ratio = numerator / denominator
+    return RuleField(ratio, source, f"{ratio:.2%}")
+
+
+def build_rule_fields(
+    app: Application,
+    materials: Sequence[Material],
+    consistency: ConsistencyResult,
+) -> dict[str, RuleField]:
+    """按规则文件 field 定义，汇总申请与材料 OCR 的字段取值。"""
+    submit_date = (app.submitted_at or app.created_at).date()
+    amount = float(app.amount)
+    fields: dict[str, RuleField] = {
+        "apply_amount": RuleField(amount, "application", f"{amount:,.2f} 万元")
+    }
+
+    # 营业执照：登记状态、成立年限、信用代码格式
+    license_texts = _texts_by_category(materials, MaterialCategory.BUSINESS_LICENSE)
+    if license_texts:
+        license_text = license_texts[0]
+        status = _license_status(license_text)
+        fields["registration_status"] = RuleField(
+            status, MaterialCategory.BUSINESS_LICENSE.value, status
+        )
+        established = _license_established_months(license_text, submit_date)
+        fields["established_months"] = RuleField(
+            established,
+            MaterialCategory.BUSINESS_LICENSE.value,
+            f"{established} 个月" if established is not None else None,
+        )
+        code = _extract_license(license_text)["credit_code"] or app.credit_code
+        valid = _credit_code_valid(code)
+        code_text = {True: "valid", False: "invalid"}.get(valid) if valid is not None else None
+        fields["credit_code_format"] = RuleField(
+            code_text,
+            MaterialCategory.BUSINESS_LICENSE.value,
+            "有效" if valid else "无效" if valid is False else None,
+        )
+    else:
+        for name in ("registration_status", "established_months", "credit_code_format"):
+            fields[name] = RuleField(None, MaterialCategory.BUSINESS_LICENSE.value)
+
+    # 征信授权书：授权剩余有效期月数；无明确到期日时按签署后 6 个月计
+    auth_texts = _texts_by_category(materials, MaterialCategory.CREDIT_AUTH)
+    auth_months: list[int] = []
+    for text in auth_texts:
+        info = _extract_credit_auth(text)
+        signed_at = info["signed_at"]
+        valid_until = info["valid_until"]
+        if isinstance(valid_until, date):
+            months = (
+                -1
+                if valid_until < submit_date
+                else _months_between(submit_date, valid_until)
+            )
+        elif isinstance(signed_at, date):
+            months = AUTH_SIGN_VALID_MONTHS - _months_between(signed_at, submit_date)
+        else:
+            continue
+        auth_months.append(months)
+    auth_valid = min(auth_months) if auth_months else None
+    fields["auth_valid_months"] = RuleField(
+        auth_valid,
+        MaterialCategory.CREDIT_AUTH.value,
+        (
+            "授权期限已过"
+            if auth_valid is not None and auth_valid < 0
+            else f"{auth_valid} 个月（剩余有效期）"
+            if auth_valid is not None
+            else None
+        ),
+    )
+
+    # 银行流水：覆盖月数、连续净流出、6 个月贷方合计
+    bank_texts = _texts_by_category(materials, MaterialCategory.BANK_STATEMENT)
+    entries = _bank_entries(materials)
+    if bank_texts:
+        coverage = _longest_consecutive_months(_statement_months(bank_texts))
+        fields["statement_coverage_months"] = RuleField(
+            coverage, MaterialCategory.BANK_STATEMENT.value, f"{coverage} 个月"
+        )
+        fields["consecutive_outflow_months"] = RuleField(
+            _max_consecutive_outflow(entries),
+            MaterialCategory.BANK_STATEMENT.value,
+            f"{_max_consecutive_outflow(entries)} 个月",
+        )
+        inflow_total: float | None = sum(entry[1] for entry in entries)
+        inflow_6m: float | None = (
+            sum(entry[1] for entry in entries[-6:]) if entries else None
+        )
+        closings = [entry[3] for entry in entries if entry[3] is not None]
+        closing = float(closings[-1]) if closings else None
+    else:
+        inflow_total = inflow_6m = closing = None
+        for name in ("statement_coverage_months", "consecutive_outflow_months"):
+            fields[name] = RuleField(None, MaterialCategory.BANK_STATEMENT.value)
+
+    # 财务报表：营收、利润、资产负债、货币资金
+    financial_texts = _texts_by_category(materials, MaterialCategory.FINANCIAL_REPORT)
+    snapshot = _financial_snapshot(financial_texts)
+    revenue = snapshot["revenue"]
+    net_profit = (
+        snapshot["net_profit"]
+        if snapshot["net_profit"] is not None
+        else snapshot["profit"]
+    )
+    fields["net_profit"] = RuleField(
+        net_profit,
+        MaterialCategory.FINANCIAL_REPORT.value,
+        f"{net_profit:,.2f} 元" if net_profit is not None else None,
+    )
+    fields["debt_ratio"] = _ratio_field(
+        snapshot["liabilities"], snapshot["assets"], MaterialCategory.FINANCIAL_REPORT.value
+    )
+    fields["annual_inflow_ratio"] = _ratio_field(
+        inflow_total, revenue, MaterialCategory.BANK_STATEMENT.value
+    )
+    fields["inflow_to_revenue"] = _ratio_field(
+        inflow_6m, revenue, MaterialCategory.BANK_STATEMENT.value
+    )
+    fields["loan_to_revenue"] = _ratio_field(
+        amount * 10000, revenue, MaterialCategory.FINANCIAL_REPORT.value
+    )
+    net_asset = (
+        snapshot["assets"] - snapshot["liabilities"]
+        if snapshot["assets"] is not None and snapshot["liabilities"] is not None
+        else None
+    )
+    fields["loan_to_net_asset"] = _ratio_field(
+        amount * 10000, net_asset, MaterialCategory.FINANCIAL_REPORT.value
+    )
+    fields["loan_to_inflow_6m"] = _ratio_field(
+        amount * 10000, inflow_6m, MaterialCategory.BANK_STATEMENT.value
+    )
+    if closing is not None and snapshot["cash"]:
+        fields["cash_diff_ratio"] = _ratio_field(
+            abs(closing - snapshot["cash"]),
+            snapshot["cash"],
+            MaterialCategory.BANK_STATEMENT.value,
+        )
+    else:
+        fields["cash_diff_ratio"] = RuleField(None, MaterialCategory.BANK_STATEMENT.value)
+    cashflow_positive = None
+    if net_profit is not None or snapshot["operating_cash"] is not None:
+        cashflow_positive = (net_profit or 0) > 0 or (snapshot["operating_cash"] or 0) > 0
+    fields["profit_or_cashflow_positive"] = RuleField(
+        cashflow_positive,
+        MaterialCategory.FINANCIAL_REPORT.value,
+        None if cashflow_positive is None else "是" if cashflow_positive else "否",
+    )
+
+    # 纳税申报表：重大欠税、研发费用加计扣除
+    tax_texts = _texts_by_category(materials, MaterialCategory.TAX_RETURN)
+    if tax_texts:
+        compact_tax = "".join(_compact(text) for text in tax_texts)
+        no_debt = "无欠税" in compact_tax or "不存在欠税" in compact_tax
+        has_debt = not no_debt and ("欠税" in compact_tax or "欠缴税款" in compact_tax)
+        fields["has_major_tax_debt"] = RuleField(
+            has_debt, MaterialCategory.TAX_RETURN.value, "是" if has_debt else "否"
+        )
+        has_rd = "加计扣除" in compact_tax or "高新技术企业" in compact_tax
+        fields["has_rd_deduction"] = RuleField(
+            has_rd, MaterialCategory.TAX_RETURN.value, "是" if has_rd else "否"
+        )
+    else:
+        for name in ("has_major_tax_debt", "has_rd_deduction"):
+            fields[name] = RuleField(None, MaterialCategory.TAX_RETURN.value)
+
+    # 其他材料：科技资质、知识产权、抵押物证明
+    other_texts = _texts_by_category(materials, MaterialCategory.OTHER)
+    if other_texts:
+        ip_count = _keyword_count(other_texts, _IP_KEYWORDS)
+        has_tech = _keyword_count(other_texts, _TECH_CERT_KEYWORDS) > 0 or ip_count > 0
+        has_collateral = _keyword_count(other_texts, _COLLATERAL_KEYWORDS) > 0
+        fields["has_tech_cert"] = RuleField(
+            has_tech, MaterialCategory.OTHER.value, "是" if has_tech else "否"
+        )
+        fields["ip_count"] = RuleField(
+            ip_count, MaterialCategory.OTHER.value, f"{ip_count} 项"
+        )
+        fields["has_collateral_doc"] = RuleField(
+            has_collateral, MaterialCategory.OTHER.value, "是" if has_collateral else "否"
+        )
+        fields["loan_to_collateral"] = _ratio_field(
+            amount * 10000, _collateral_value(other_texts), MaterialCategory.OTHER.value
+        )
+    else:
+        for name in ("has_tech_cert", "ip_count", "has_collateral_doc", "loan_to_collateral"):
+            fields[name] = RuleField(None, MaterialCategory.OTHER.value)
+
+    # 企业名称一致性：复用一致性校验结论
+    name_check = next(
+        (check for check in consistency.checks if check.check_item == "企业名称一致性"),
+        None,
+    )
+    if name_check is not None and name_check.status != ConsistencyStatus.UNCERTAIN:
+        consistent = name_check.status == ConsistencyStatus.PASS
+        fields["company_name_consistent"] = RuleField(
+            consistent, "application", "一致" if consistent else "不一致"
+        )
+    else:
+        fields["company_name_consistent"] = RuleField(None, "application")
+
+    return fields
+
+
+def _format_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "是" if value else "否"
+    if isinstance(value, float):
+        if 0 < abs(value) <= 1:
+            return f"{value:.0%}"
+        return str(int(value)) if value.is_integer() else f"{value:g}"
+    return str(value)
+
+
+def _format_score(score: float) -> str:
+    return str(int(score)) if float(score).is_integer() else f"{score:g}"
+
+
+def _expectation_text(operator: str, expected: object) -> str:
+    """把 YAML 规则要求转成可读表达式。"""
+    if operator in ("in", "not_in"):
+        values = expected if isinstance(expected, (list, tuple)) else [expected]
+        return f"{_OPERATOR_LABELS[operator]} {'/'.join(_format_value(item) for item in values)}"
+    if operator == "contains":
+        return f"包含 {_format_value(expected)}"
+    return f"{_OPERATOR_LABELS.get(operator, operator)} {_format_value(expected)}"
+
+
+def _compare(actual: object, operator: str, expected: object) -> bool | None:
+    """按操作符比较实际值与期望值，无法比较时返回 None。"""
+    if operator == "in":
+        return actual in (expected or [])
+    if operator == "not_in":
+        return actual not in (expected or [])
+    if operator == "contains":
+        return str(expected) in str(actual)
+    if operator == "eq":
+        if isinstance(actual, bool) or isinstance(expected, bool):
+            return bool(actual) == bool(expected)
+        return actual == expected
+    if operator == "neq":
+        matched = _compare(actual, "eq", expected)
+        return None if matched is None else not matched
+    try:
+        left, right = float(actual), float(expected)
+    except (TypeError, ValueError):
+        return None
+    if operator == "gt":
+        return left > right
+    if operator == "gte":
+        return left >= right
+    if operator == "lt":
+        return left < right
+    if operator == "lte":
+        return left <= right
+    return None
+
+
+def _level_of(score: float, scoring: dict) -> str:
+    for name, bounds in (scoring.get("level_thresholds") or {}).items():
+        try:
+            low, high = float(bounds[0]), float(bounds[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if low <= score <= high:
+            return str(name)
+    return "D"
+
+
+def evaluate_rules(config: dict, fields: dict[str, RuleField]) -> RuleMatchResult:
+    """按规则文件逐条判定，并计算准入评分与等级。"""
+    scoring = config.get("scoring") or {}
+    rules = [rule for rule in (config.get("rules") or []) if isinstance(rule, dict)]
+    items: list[RuleMatchItem] = []
+    hard_fail_count = soft_fail_count = uncertain_count = pass_count = 0
+
+    for rule in rules:
+        rule_id = str(rule.get("rule_id") or "")
+        kind = "hard" if rule.get("kind") == "hard" else "soft"
+        operator = str(rule.get("operator") or "eq")
+        expected = rule.get("value")
+        field_name = str(rule.get("field") or "")
+        field = fields.get(field_name)
+        actual_value = field.value if field is not None else None
+        expected_text = _expectation_text(operator, expected)
+
+        matched = (
+            None if actual_value is None else _compare(actual_value, operator, expected)
+        )
+        if matched is None:
+            result = RuleMatchStatus.UNCERTAIN
+            uncertain_count += 1
+            detail = f"{rule.get('detail_zh') or ''}（关键证据缺失，转人工核验）"
+        elif matched:
+            result = RuleMatchStatus.PASS
+            pass_count += 1
+            detail = str(rule.get("detail_zh") or "")
+        else:
+            result = RuleMatchStatus.FAIL
+            if kind == "hard":
+                hard_fail_count += 1
+            else:
+                soft_fail_count += 1
+            detail = str(rule.get("detail_zh") or "")
+
+        if isinstance(actual_value, bool):
+            evidence_value: str | float | int | None = "是" if actual_value else "否"
+        elif isinstance(actual_value, (str, int, float)):
+            evidence_value = actual_value
+        else:
+            evidence_value = None
+
+        items.append(
+            RuleMatchItem(
+                rule_id=rule_id,
+                rule_name=str(rule.get("rule_name") or ""),
+                kind=kind,
+                operator=operator,
+                expected=expected_text,
+                actual=field.display if field is not None else None,
+                result=result,
+                evidence=RuleEvidence(
+                    source=field.source if field is not None else None,
+                    field=field_name,
+                    value=evidence_value,
+                ),
+                detail=detail.strip() or None,
+            )
+        )
+
+    base_score = float(scoring.get("base_score") or 0)
+    soft_unit = float(scoring.get("soft_rule_score") or 0)
+    soft_pass_count = sum(
+        1 for item in items if item.kind == "soft" and item.result == RuleMatchStatus.PASS
+    )
+    if hard_fail_count and scoring.get("hard_rules_reject", True):
+        score = 0.0
+    else:
+        score = min(100.0, base_score + soft_pass_count * soft_unit)
+    level = _level_of(score, scoring)
+
+    return RuleMatchResult(
+        rule_version=str(config.get("version") or "unknown"),
+        score=round(score, 2),
+        level=level,
+        level_label=(scoring.get("level_label") or {}).get(level),
+        level_note=(scoring.get("level_note") or {}).get(level),
+        pass_count=pass_count,
+        total_count=len(items),
+        hard_fail_count=hard_fail_count,
+        soft_fail_count=soft_fail_count,
+        uncertain_count=uncertain_count,
+        rules=items,
+    )
+
+
+def match_rules(
+    app: Application,
+    materials: Sequence[Material],
+    consistency: ConsistencyResult,
+    config: dict | None = None,
+) -> RuleMatchResult:
+    """2.2 准入规则匹配：按产品 YAML 逐条输出 pass / fail / uncertain 及证据。"""
+    rule_config = config or load_rule_config(app.product)
+    if not rule_config:
+        return RuleMatchResult(rule_version="unknown", pass_count=0, total_count=0)
+    fields = build_rule_fields(app, materials, consistency)
+    return evaluate_rules(rule_config, fields)
 
 
 def summarize_risk_signals(
-    payload: MaterialAnalysisRequest,
     completeness: CompletenessResult,
     consistency: ConsistencyResult,
     rule_matching: RuleMatchResult,
 ) -> RiskSummary:
     """2.3 风险信号汇总：结合完整性与规则匹配结果输出分级风险信号。"""
-    raise NotImplementedError("风险信号汇总逻辑待实现")
+    signals: list[RiskSignal] = []
+
+    def add(
+        level: RiskLevel,
+        category: str,
+        title: str,
+        source: str | None,
+        detail: str,
+        suggestion: str | None = None,
+    ) -> None:
+        signals.append(
+            RiskSignal(
+                signal_id=f"RS-{len(signals) + 1:02d}",
+                level=level,
+                category=category,
+                title=title[:200],
+                evidence=RiskEvidence(source=source, detail=detail[:500]),
+                suggestion=suggestion,
+            )
+        )
+
+    for item in rule_matching.rules:
+        if item.result != RuleMatchStatus.FAIL:
+            continue
+        evidence_source = item.evidence.source if item.evidence else None
+        detail = (
+            f"{item.rule_id}：实际 {item.actual or '—'}，要求 {item.expected or '—'}"
+            f"；{item.detail or ''}"
+        )
+        if item.kind == "hard":
+            add(
+                RiskLevel.HIGH,
+                "准入规则",
+                item.rule_name,
+                evidence_source,
+                detail,
+                "强规则未通过，建议拒绝",
+            )
+        else:
+            add(
+                RiskLevel.MEDIUM,
+                "经营与财务",
+                item.rule_name,
+                evidence_source,
+                detail,
+                "弱规则未通过，建议人工关注并核实",
+            )
+
+    for check in consistency.checks:
+        if check.status != ConsistencyStatus.FAIL:
+            continue
+        if check.severity == ConsistencySeverity.HIGH:
+            level = RiskLevel.HIGH
+        elif check.severity == ConsistencySeverity.MEDIUM:
+            level = RiskLevel.MEDIUM
+        else:
+            level = RiskLevel.LOW
+        add(
+            level,
+            "材料一致性",
+            check.check_item,
+            None,
+            check.suggestion or f"{check.check_item}不一致",
+            "转人工核验原始材料",
+        )
+
+    for issue in completeness.issues:
+        add(RiskLevel.MEDIUM, "材料完整性", issue.message, None, issue.message, "补件后重新预审")
+
+    return RiskSummary(risk_signals=signals)
 
 
 def collect_conflicts(
-    payload: MaterialAnalysisRequest,
-    completeness: CompletenessResult,
+    materials: Sequence[Material],
     consistency: ConsistencyResult,
     rule_matching: RuleMatchResult,
 ) -> ConflictSummary:
-    """2.4 低置信 / 规则冲突项：汇总字段低置信、规则互斥与严重不一致项。"""
-    raise NotImplementedError("低置信与冲突项识别逻辑待实现")
+    """2.4 低置信 / 规则冲突项：低置信材料、严重不一致与证据不足规则。"""
+    conflicts: list[ConflictItem] = []
+
+    for material in materials:
+        confidence = (
+            float(material.confidence) if material.confidence is not None else None
+        )
+        if confidence is not None and confidence < LOW_CONFIDENCE_THRESHOLD:
+            conflicts.append(
+                ConflictItem(
+                    type=ConflictType.LOW_CONFIDENCE,
+                    source=material.category,
+                    value=material.file_name,
+                    confidence=confidence,
+                    reason=(
+                        f"材料分类置信度 {confidence:.2f} 低于阈值 "
+                        f"{LOW_CONFIDENCE_THRESHOLD}，需人工确认类别"
+                    ),
+                )
+            )
+
+    for check in consistency.checks:
+        if check.status != ConsistencyStatus.FAIL:
+            continue
+        conflicts.append(
+            ConflictItem(
+                type=ConflictType.DATA_INCONSISTENT,
+                field=check.field,
+                value="；".join(item.value for item in check.values[:3]) or None,
+                reason=check.suggestion or f"{check.check_item}不一致，需人工核验",
+            )
+        )
+
+    for item in rule_matching.rules:
+        if item.result != RuleMatchStatus.UNCERTAIN:
+            continue
+        conflicts.append(
+            ConflictItem(
+                type=ConflictType.RULE_CONFLICT,
+                source=item.evidence.source if item.evidence else None,
+                field=item.evidence.field if item.evidence else None,
+                rules=[item.rule_id],
+                reason=f"规则 {item.rule_id}（{item.rule_name}）缺少判定证据，需人工核验",
+            )
+        )
+
+    return ConflictSummary(conflicts=conflicts)
 
 
 def build_summary(
     completeness: CompletenessResult,
     consistency: ConsistencyResult,
     rule_matching: RuleMatchResult,
-    risk_summary: RiskSummary,
-    conflict_summary: ConflictSummary,
+    config: dict | None = None,
 ) -> AiReportSummary:
-    """3 汇总结论：按规则推导 conclusion / summary / pass_rate。"""
-    raise NotImplementedError("预审汇总结论生成逻辑待实现")
+    """3 汇总结论：按规则文件 conclusion_logic 推导结论、摘要与通过率。"""
+    logic = (config or {}).get("conclusion_logic") or {}
 
+    def action(key: str, default: str) -> str:
+        return str(logic.get(key) or default)
 
-def analyze_materials(payload: MaterialAnalysisRequest) -> MaterialAnalysisResponse:
-    """材料分析总入口：串联 2.1 ~ 2.4 并生成汇总输出。"""
-    raise NotImplementedError("材料分析逻辑待实现")
+    high_fails = [
+        check
+        for check in consistency.checks
+        if check.status == ConsistencyStatus.FAIL
+        and check.severity == ConsistencySeverity.HIGH
+    ]
+    hard_fails = [
+        item
+        for item in rule_matching.rules
+        if item.kind == "hard" and item.result == RuleMatchStatus.FAIL
+    ]
+    soft_fails = [
+        item
+        for item in rule_matching.rules
+        if item.kind == "soft" and item.result == RuleMatchStatus.FAIL
+    ]
+    # 缺件 / 不可读属于需补件的阻断性完整性问题；期间、三表等异常仅需关注
+    completeness_blocking = bool(completeness.missing) or any(
+        issue.type in ("missing", "unreadable") for issue in completeness.issues
+    )
+
+    if hard_fails and action("hard_rule_fail", "reject") == "reject":
+        conclusion = AiConclusion.FORBIDDEN
+    elif completeness_blocking:
+        conclusion = _ACTION_TO_CONCLUSION.get(
+            action("completeness_issue", "manual"), AiConclusion.MANUAL
+        )
+    elif high_fails:
+        conclusion = _ACTION_TO_CONCLUSION.get(
+            action("consistency_high_fail", "attention"), AiConclusion.ATTENTION
+        )
+    elif rule_matching.soft_fail_count >= 3:
+        conclusion = _ACTION_TO_CONCLUSION.get(
+            action("soft_rule_fail_count_ge_3", "attention"), AiConclusion.ATTENTION
+        )
+    elif completeness.issues:
+        conclusion = AiConclusion.ATTENTION
+    else:
+        conclusion = _ACTION_TO_CONCLUSION.get(
+            action("else", "pass"), AiConclusion.PASS
+        )
+
+    parts: list[str] = []
+    if rule_matching.total_count:
+        parts.append(
+            f"准入规则通过 {rule_matching.pass_count}/{rule_matching.total_count} 条，"
+            f"评分 {_format_score(rule_matching.score)} 分"
+            f"（{rule_matching.level}·{rule_matching.level_label or '—'}）"
+        )
+    if hard_fails:
+        parts.append("强规则未通过：" + "、".join(item.rule_name for item in hard_fails))
+    if soft_fails:
+        parts.append("弱规则未通过：" + "、".join(item.rule_name for item in soft_fails))
+    parts.extend(issue.message for issue in completeness.issues)
+    if high_fails:
+        parts.append("一致性高风险：" + "、".join(check.check_item for check in high_fails))
+    summary_text = (
+        "；".join(parts) if parts else "必备材料齐全、内容可读，准入规则与一致性校验通过"
+    )
+
+    pass_rate = (
+        rule_matching.score
+        if rule_matching.total_count
+        else round(completeness.coverage_rate * 100, 2)
+    )
+    return AiReportSummary(
+        conclusion=conclusion, summary=summary_text, pass_rate=pass_rate
+    )

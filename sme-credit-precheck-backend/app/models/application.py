@@ -31,3 +31,9 @@ class Application(Base, TimestampMixin):
         DateTime, nullable=True, comment="时效截止时间"
     )
     ai_summary: Mapped[str | None] = mapped_column(Text, nullable=True, comment="AI 摘要")
+    supplement_note: Mapped[str | None] = mapped_column(
+        String(500), nullable=True, comment="退回补件说明"
+    )
+    supplement_source: Mapped[str | None] = mapped_column(
+        String(10), nullable=True, comment="补件来源：manual=人工复核退回，risk=风控退回"
+    )

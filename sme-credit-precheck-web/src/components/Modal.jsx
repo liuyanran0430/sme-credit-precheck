@@ -1,10 +1,11 @@
 /**
  * 通用弹窗组件
  */
-export default function Modal({ title, onClose, children, footer, wide }) {
+export default function Modal({ title, onClose, children, footer, wide, xlarge }) {
+  const cls = xlarge ? 'modal modal-xlarge' : wide ? 'modal modal-wide' : 'modal'
   return (
     <div className="modal-mask" onClick={onClose}>
-      <div className={wide ? 'modal modal-wide' : 'modal'} onClick={(e) => e.stopPropagation()}>
+      <div className={cls} onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h3>{title}</h3>
           <button className="btn btn-ghost btn-sm" onClick={onClose}>

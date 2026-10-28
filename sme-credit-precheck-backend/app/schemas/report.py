@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from pydantic import Field
@@ -14,11 +15,12 @@ class AiReportRead(ORMModel):
     conclusion: AiConclusion
     summary: str | None
     pass_rate: float | None
-    rule_results: list[dict[str, Any]] | None
+    rule_results: dict[str, Any] | None
     risk_signals: list[dict[str, Any]] | None
     conflicts: list[dict[str, Any]] | None
     completeness: dict[str, Any] | None = Field(None, description="材料完整性分析结果")
     consistency: dict[str, Any] | None = Field(None, description="材料一致性分析结果")
+    created_at: datetime = Field(..., description="报告生成时间")
 
 
 class AiReportGenerateRequest(ORMModel):

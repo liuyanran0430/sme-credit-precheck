@@ -3,6 +3,16 @@ import { fetchApplications } from '../api/applications'
 
 const AppContext = createContext(null)
 
+// 申请尚无 AI 摘要时，按当前进度给出提示文案
+const STATUS_SUMMARY_HINTS = {
+  check: 'AI 预审尚未开始，待材料分类完成后自动生成摘要。',
+  supplement: '材料待补件，补齐后 AI 将重新预审并更新摘要。',
+  manual: 'AI 预审已完成，待人工复核确认。',
+  risk: '已通过人工复核，待风控复核。',
+  approved: '申请已审批完成。',
+  rejected: '申请已被人工复核否决，流程终止。'
+}
+
 export function normalizeApplication(row) {
   return {
     id: row.app_no,
@@ -13,7 +23,11 @@ export function normalizeApplication(row) {
     product: row.product,
     status: row.status,
     manager: row.manager_name || '未分配',
-    summary: row.ai_summary || '暂无 AI 摘要',
+    summary: row.ai_summary || STATUS_SUMMARY_HINTS[row.status] || '暂无 AI 摘要',
+    supplementNote: row.supplement_note || '',
+    supplementSource: row.supplement_source || null,
+    riskReturned: !!row.risk_returned,
+    conclusion: row.conclusion || null,
     submittedAt: row.submitted_at,
     slaDeadline: row.sla_deadline,
     createdAt: row.created_at,
@@ -34,6 +48,18 @@ export function AppProvider({ children }) {
   const [appsLoading, setAppsLoading] = useState(true)
   const [materialsMap, setMaterialsMap] = useState({})
   const [toasts, setToasts] = useState([])
+  // 各申请的后台处理阶段：checking=材料检查中，analyzing=AI 预审中
+  const [processingMap, setProcessingMap] = useState({})
+
+  // 更新某申请的后台处理阶段（null 表示处理结束）
+  const setProcessing = useCallback((appId, stage) => {
+    setProcessingMap((prev) => {
+      const next = { ...prev }
+      if (stage) next[appId] = stage
+      else delete next[appId]
+      return next
+    })
+  }, [])
 
   // 获取某申请的材料清单
   const getMaterials = useCallback((appId) => materialsMap[appId] || [], [materialsMap])
@@ -101,9 +127,11 @@ export function AppProvider({ children }) {
       updateApp,
       addApp,
       toasts,
-      toast
+      toast,
+      processingMap,
+      setProcessing
     }),
-    [apps, appsLoading, materialsMap, getMaterials, setMaterials, updateApp, addApp, toasts, toast]
+    [apps, appsLoading, materialsMap, getMaterials, setMaterials, updateApp, addApp, toasts, toast, processingMap, setProcessing]
   )
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

@@ -39,6 +39,21 @@
   background: var(--ok-bg);
   color: #065f46;
 }
+/* 待补件来源小标签 */
+.tag-src-manual {
+  margin-left: 4px;
+  background: var(--warn-bg);
+  color: #92400e;
+  font-size: 11px;
+  padding: 1px 6px;
+}
+.tag-src-risk {
+  margin-left: 4px;
+  background: var(--purple-bg);
+  color: #5b21b6;
+  font-size: 11px;
+  padding: 1px 6px;
+}
 .tag-warn {
   background: var(--warn-bg);
   color: #92400e;
@@ -255,6 +270,17 @@
   color: var(--slate-700);
 }
 
+/* 被拒绝节点：红色叉子 + 已拒绝标注 */
+.step.rejected .dot {
+  background: var(--risk);
+  color: #fff;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.18);
+}
+
+.step.rejected .step-label {
+  color: var(--risk);
+}
+
 /* ============ 进度条 ============ */
 .progress-line {
   display: flex;
@@ -303,6 +329,10 @@
 
 .modal-wide {
   width: min(1080px, 100%);
+}
+
+.modal-xlarge {
+  width: min(1440px, 100%);
 }
 
 .preview-frame {
@@ -383,7 +413,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 26px;
+  font-size: 44px;
+  line-height: 1;
   padding: 0;
   border: 1px solid transparent;
   border-radius: 10px;
@@ -467,6 +498,17 @@
   color: var(--slate-400);
 }
 
+.cat-title-hint {
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--risk, #dc2626);
+}
+
+.cat-title-hint-muted {
+  color: var(--slate-400);
+}
+
 .cat-foot {
   display: flex;
   justify-content: space-between;
@@ -536,6 +578,21 @@
 .modal-body input:focus {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.modal-body label .req {
+  color: var(--risk);
+}
+
+.modal-body textarea.error,
+.modal-body input.error {
+  border-color: var(--risk);
+}
+
+.modal-body textarea.error:focus,
+.modal-body input.error:focus {
+  border-color: var(--risk);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
 }
 
 .modal-body select {

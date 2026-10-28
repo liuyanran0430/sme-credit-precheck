@@ -77,12 +77,17 @@ export default function CategoryModal({ appId, materials, onClose, onSaved }) {
     <>
       <Modal
         wide
-        title="修改分类"
+        title={
+          <>
+            修改分类
+            <span className="cat-title-hint">单击图标查看完整文件</span>
+          </>
+        }
         onClose={onClose}
         footer={
           <div className="cat-foot">
             <span className="muted">
-              {changedCount ? `已选择 ${changedCount} 个文件的新类别` : '单击文件图标可预览内容'}
+              {changedCount ? `已选择 ${changedCount} 个文件的新类别` : ''}
             </span>
             <div className="actions-right">
               <button className="btn btn-secondary" onClick={onClose} disabled={saving}>

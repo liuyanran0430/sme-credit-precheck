@@ -96,11 +96,80 @@ export async function fetchReport(appNo) {
 }
 
 /**
- * 查询材料完整性分析结果。
+ * 查询某申请的人工复核记录（按提交时间倒序）。
  */
-export async function fetchCompleteness(appNo) {
+export async function fetchManualReviews(appNo) {
   const response = await request(
-    `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/report/completeness`
+    `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/reviews`
+  )
+  return response.json()
+}
+
+/**
+ * 查询某申请的风控复核记录（按提交时间倒序）。
+ */
+export async function fetchRiskReviews(appNo) {
+  const response = await request(
+    `${API_PREFIX}/risk/${encodeURIComponent(appNo)}/reviews`
+  )
+  return response.json()
+}
+
+/**
+ * 触发 AI 预审（材料分类完成后调用），返回最新预审报告。
+ */
+export async function generateReport(appNo) {
+  const response = await request(
+    `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/report/generate`,
+    { method: 'POST' }
+  )
+  return response.json()
+}
+
+/**
+ * 导出 AI 预审报告 PDF（浏览器直接下载）。
+ */
+export async function exportReport(appNo) {
+  const response = await request(
+    `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/report/export`
+  )
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `AI预审报告_${appNo}.pdf`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * 提交人工复核结果（逐项采纳/修改/驳回）。
+ */
+export async function submitManualReview(appNo, payload) {
+  const response = await request(
+    `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/reviews`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }
+  )
+  return response.json()
+}
+
+/**
+ * 提交风控复核决策：通过/有条件通过 → 已审批；退回补件 → 待补件。
+ */
+export async function submitRiskDecision(appNo, payload) {
+  const response = await request(
+    `${API_PREFIX}/risk/${encodeURIComponent(appNo)}/decision`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }
   )
   return response.json()
 }

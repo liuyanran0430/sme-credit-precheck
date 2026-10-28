@@ -75,7 +75,7 @@ export default function ListView() {
     if (a.status === 'risk')
       return (
         <button className="btn btn-primary btn-sm act-btn" onClick={() => navigate(`/detail/${a.id}`)}>
-          查看进度
+          查看申请
         </button>
       )
     if (a.status === 'check')
@@ -84,9 +84,10 @@ export default function ListView() {
           去检查
         </button>
       )
+    // 已审批 / 已拒绝 等终态：去查看
     return (
-      <button className="btn btn-primary btn-sm act-btn" onClick={() => navigate(`/review/${a.id}`)}>
-        去复核
+      <button className="btn btn-primary btn-sm act-btn" onClick={() => navigate(`/detail/${a.id}`)}>
+        去查看
       </button>
     )
   }
@@ -124,6 +125,7 @@ export default function ListView() {
           <option value="supplement">待补件</option>
           <option value="manual">待人工核验</option>
           <option value="risk">待风控复核</option>
+          <option value="rejected">已拒绝</option>
         </select>
         <select value={filters.product} onChange={(e) => setFilter('product', e.target.value)}>
           <option value="">产品：全部</option>
@@ -203,6 +205,11 @@ export default function ListView() {
                         <td className="col-amount">{fmt(a.amount)} 万元</td>
                         <td className="col-status">
                           <span className={`tag tag-${s.cls}`}>{s.label}</span>
+                          {a.status === 'supplement' && a.supplementSource === 'risk' ? (
+                            <span className="tag tag-src-risk">风控退回</span>
+                          ) : a.status === 'supplement' && a.supplementSource === 'manual' ? (
+                            <span className="tag tag-src-manual">复核退回</span>
+                          ) : null}
                         </td>
                         <td className="col-action">
                           <div className="act-group">

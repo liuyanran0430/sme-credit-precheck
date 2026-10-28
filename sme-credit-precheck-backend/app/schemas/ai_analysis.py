@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.models.enums import AiConclusion
-from app.schemas.ai_classification import MaterialCategory, OcrResult
+from app.schemas.ai_classification import MaterialCategory
 
 
 class RuleMatchStatus(str, Enum):
@@ -59,29 +59,6 @@ class ConflictAction(str, Enum):
 # ---------------------------------------------------------------- 公共输入
 
 
-class AnalysisMaterial(BaseModel):
-    """参与分析的材料。"""
-
-    material_id: int
-    material_path: str | None = Field(None, description="材料文件地址")
-    category: MaterialCategory
-    confidence: float = Field(..., ge=0, le=1, description="分类置信度")
-    ocr_result: OcrResult = Field(..., description="字段抽取结果")
-
-
-class AnalysisContext(BaseModel):
-    """申请级上下文。"""
-
-    app_no: str = Field(..., max_length=32, description="申请编号")
-    company_name: str = Field(..., max_length=200, description="企业名称")
-    credit_code: str | None = Field(None, max_length=32, description="统一社会信用代码")
-    apply_amount: float = Field(..., gt=0, description="申请金额（万元）")
-    product: str = Field(..., max_length=100, description="贷款产品")
-    materials: list[AnalysisMaterial] = Field(
-        default_factory=list, description="该申请下的全部材料"
-    )
-
-
 DEFAULT_REQUIRED_CATEGORIES: list[MaterialCategory] = [
     MaterialCategory.BUSINESS_LICENSE,
     MaterialCategory.BANK_STATEMENT,
@@ -89,17 +66,6 @@ DEFAULT_REQUIRED_CATEGORIES: list[MaterialCategory] = [
     MaterialCategory.TAX_RETURN,
     MaterialCategory.CREDIT_AUTH,
 ]
-
-
-class MaterialAnalysisRequest(BaseModel):
-    """材料分析请求：公共输入 + 必交材料清单 + 规则版本。"""
-
-    context: AnalysisContext
-    required_categories: list[MaterialCategory] = Field(
-        default_factory=lambda: list(DEFAULT_REQUIRED_CATEGORIES),
-        description="该产品要求的必交材料清单",
-    )
-    rule_version: str = Field("v2026-10", max_length=32, description="准入规则版本")
 
 
 # ---------------------------------------------------- 2.1 完整性 & 一致性
@@ -113,6 +79,9 @@ class CategoryCompleteness(BaseModel):
     required: bool = Field(..., description="是否为必备类别")
     count: int = Field(..., ge=0, description="该类材料份数")
     satisfied: bool = Field(..., description="是否满足最小份数要求")
+    requirement: str | None = Field(
+        None, description="产品专属必交材料的具体要求（规则文件 desc）"
+    )
 
 
 class CompletenessIssue(BaseModel):
@@ -183,6 +152,10 @@ class RuleMatchItem(BaseModel):
 
     rule_id: str = Field(..., max_length=32)
     rule_name: str = Field(..., max_length=200)
+    kind: Literal["hard", "soft"] = Field("soft", description="规则类型：强规则 / 弱规则")
+    operator: str | None = Field(None, max_length=20, description="比较操作符")
+    expected: str | None = Field(None, max_length=200, description="规则要求的文本表达式")
+    actual: str | None = Field(None, max_length=200, description="客户侧实际取值")
     result: RuleMatchStatus
     evidence: RuleEvidence | None = None
     detail: str | None = Field(None, description="判定说明")
@@ -192,8 +165,15 @@ class RuleMatchResult(BaseModel):
     """准入规则匹配汇总。"""
 
     rule_version: str = Field(..., max_length=32)
+    score: float = Field(0, ge=0, le=100, description="准入评分")
+    level: str = Field("D", max_length=4, description="评分等级 A/B/C/D")
+    level_label: str | None = Field(None, description="等级中文标签")
+    level_note: str | None = Field(None, description="等级处理建议")
     pass_count: int = Field(..., ge=0)
     total_count: int = Field(..., ge=0)
+    hard_fail_count: int = Field(0, ge=0, description="强规则未通过条数")
+    soft_fail_count: int = Field(0, ge=0, description="弱规则未通过条数")
+    uncertain_count: int = Field(0, ge=0, description="证据不足条数")
     rules: list[RuleMatchItem] = Field(default_factory=list)
 
 
@@ -257,14 +237,3 @@ class AiReportSummary(BaseModel):
     conclusion: AiConclusion = Field(..., description="预审结论")
     summary: str = Field(..., description="结论摘要")
     pass_rate: float = Field(..., ge=0, le=100, description="预估通过率（%）")
-
-
-class MaterialAnalysisResponse(BaseModel):
-    """材料分析完整输出，对应 AiReport 的落库字段。"""
-
-    completeness: CompletenessResult
-    consistency: ConsistencyResult
-    rule_matching: RuleMatchResult
-    risk_summary: RiskSummary
-    conflict_summary: ConflictSummary
-    summary: AiReportSummary

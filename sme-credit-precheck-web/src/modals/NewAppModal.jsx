@@ -1,13 +1,13 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp, normalizeApplication } from '../context/AppContext'
-import { createApplication, uploadMaterials } from '../api/applications'
+import { createApplication, fetchApplication, generateReport, uploadMaterials } from '../api/applications'
 import { PRODUCTS } from '../constants'
 import { formatSize, normalizeMaterial } from '../utils'
 import Modal from '../components/Modal'
 
 export default function NewAppModal({ onClose }) {
-  const { addApp, setMaterials, toast } = useApp()
+  const { addApp, setMaterials, updateApp, setProcessing, toast } = useApp()
   const navigate = useNavigate()
 
   const [company, setCompany] = useState('')
@@ -98,34 +98,35 @@ export default function NewAppModal({ onClose }) {
       const newId = created.app_no
       addApp(normalizeApplication(created))
 
-      let uploadError = ''
-      let mats = files.map((f) => ({
-        name: f.name,
-        category: 'other',
-        ver: 'v1.0',
-        update: '今天',
-        status: 'pending',
-        files: 1
-      }))
-      try {
-        const uploaded = await uploadMaterials(newId, files.map((f) => f.file))
-        mats = uploaded.map(normalizeMaterial)
-      } catch (error) {
-        console.error(error)
-        uploadError = error.message || '材料上传失败'
-      }
-      setMaterials(newId, mats)
-
-      if (uploadError) {
-        toast(`申请 ${newId} 已创建，材料上传失败：${uploadError}`)
-      } else {
-        toast(`申请 ${newId} 已提交，已进入材料检查状态`)
-      }
-
+      // 申请创建成功即进入详情页，后台分阶段推进：材料检查（上传+OCR+分类）→ AI 预审 → 状态推进
+      setProcessing(newId, 'checking')
+      toast(`申请 ${newId} 已提交，正在进行材料检查…`)
       setSubmitting(false)
       onClose()
-      // 提交后直接进入该申请的详情页，查看材料检查情况
       navigate(`/detail/${newId}`)
+
+      uploadMaterials(newId, files.map((f) => f.file))
+        .then(async (uploaded) => {
+          setMaterials(newId, uploaded.map(normalizeMaterial))
+          toast(`申请 ${newId} 材料检查完成，正在进行 AI 预审…`)
+          setProcessing(newId, 'analyzing')
+          await generateReport(newId)
+          // 预审完成后申请状态已推进，同步前端状态以触发详情页摘要刷新
+          try {
+            const row = await fetchApplication(newId)
+            updateApp(newId, normalizeApplication(row))
+          } catch (error) {
+            console.error(error)
+          }
+          toast(`申请 ${newId} AI 预审完成`)
+        })
+        .catch((error) => {
+          console.error(error)
+          toast(`申请 ${newId} 已创建，材料处理失败：${error.message || '请稍后重试'}`)
+        })
+        .finally(() => {
+          setProcessing(newId, null)
+        })
     } catch (error) {
       setSubmitting(false)
       toast(error.message || '提交申请失败，请稍后重试')

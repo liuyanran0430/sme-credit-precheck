@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.models.enums import ApplicationStatus
+from app.models.enums import AiConclusion, ApplicationStatus
 from app.schemas.common import ORMModel
 
 
@@ -68,4 +68,12 @@ class ApplicationRead(ORMModel):
     submitted_at: datetime | None
     sla_deadline: datetime | None
     ai_summary: str | None
+    supplement_note: str | None
+    supplement_source: str | None = None
+    risk_returned: bool = Field(
+        False, description="是否曾被风控退回补件后重新补齐（非数据表字段）"
+    )
+    conclusion: AiConclusion | None = Field(
+        None, description="最新 AI 预审结论（非数据表字段，由最新预审报告带出）"
+    )
     created_at: datetime

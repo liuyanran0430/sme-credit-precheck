@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { uploadMaterials } from '../api/applications'
+import { uploadMaterials, generateReport } from '../api/applications'
 import { formatSize, normalizeMaterial } from '../utils'
 import Modal from '../components/Modal'
 
@@ -9,6 +9,7 @@ export default function UploadModal({ appId, onClose, onUploaded }) {
   const [files, setFiles] = useState([])
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [phase, setPhase] = useState('upload')
   const fileInputRef = useRef(null)
 
   const handleClose = () => {
@@ -57,9 +58,13 @@ export default function UploadModal({ appId, onClose, onUploaded }) {
     }
 
     setSubmitting(true)
+    setPhase('upload')
     try {
       const created = await uploadMaterials(appId, files.map((f) => f.file))
       setMaterials(appId, (prev) => [...prev, ...created.map(normalizeMaterial)])
+
+      setPhase('analyze')
+      await generateReport(appId)
 
       toast(`已上传 ${files.length} 份资料${note ? '（' + note + '）' : ''}，材料抽取与 AI 预审已完成`)
       setSubmitting(false)
@@ -82,7 +87,7 @@ export default function UploadModal({ appId, onClose, onUploaded }) {
             取消
           </button>
           <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? '上传中...' : '确认上传'}
+            {submitting ? (phase === 'analyze' ? 'AI 预审中...' : '上传中...') : '确认上传'}
           </button>
         </>
       }

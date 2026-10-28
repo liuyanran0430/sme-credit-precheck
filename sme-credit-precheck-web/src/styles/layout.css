@@ -176,6 +176,15 @@
   flex-wrap: wrap;
 }
 
+.page-head > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.page-head .actions-right {
+  flex-shrink: 0;
+}
+
 .page-head h1 {
   font-size: 20px;
   color: var(--slate-900);

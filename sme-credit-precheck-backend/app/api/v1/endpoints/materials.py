@@ -96,7 +96,10 @@ def preview_material(
     response_model=list[MaterialRead],
     status_code=status.HTTP_201_CREATED,
     summary="上传补充材料",
-    description="接收一个或多个文件，保存后自动执行 OCR 抽取与 AI 分类，材料状态置为已抽取，并触发 AI 预审。",
+    description=(
+        "接收一个或多个文件，保存后自动执行 OCR 抽取与 AI 分类，材料状态置为已抽取。"
+        "AI 预审由前端在材料就绪后调用 /report/generate 触发，以呈现「材料检查→AI 预审」分阶段流转。"
+    ),
 )
 async def upload_materials(
     app: Application = Depends(get_application_or_404),
@@ -161,12 +164,6 @@ async def upload_materials(
     db.commit()
     for material in materials:
         db.refresh(material)
-
-    # 材料分类完成后自动执行 AI 预审，生成/更新预审报告（按申请下全部材料判断）
-    all_materials = db.scalars(
-        select(Material).where(Material.app_id == app.id).order_by(Material.id.asc())
-    ).all()
-    generate_report(db, app, all_materials)
     return materials
 
 
