@@ -1,3 +1,5 @@
+import logging
+
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -5,12 +7,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_application_or_404, get_db
+from app.core.logging import LogContext
 from app.models.application import Application
 from app.models.material import Material
 from app.models.report import AiReport
 from app.schemas.report import AiReportGenerateRequest, AiReportRead
 from app.services.analyzer import generate_report as build_ai_report
 from app.services.report_pdf import get_report_pdf
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -48,6 +53,9 @@ def export_report(
     )
     if report is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="预审报告尚未生成")
+
+    with LogContext(app_no=app.app_no):
+        logger.info("导出预审报告, app_no=%s", app.app_no)
 
     filename = f"AI预审报告_{app.app_no}.pdf"
     return Response(

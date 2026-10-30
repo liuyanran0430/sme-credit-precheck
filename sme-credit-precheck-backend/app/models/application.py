@@ -26,7 +26,6 @@ class Application(Base, TimestampMixin):
         enum_column(ApplicationStatus), default=ApplicationStatus.CHECK, index=True
     )
     manager_name: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="客户经理")
-    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, comment="提交时间")
     sla_deadline: Mapped[datetime | None] = mapped_column(
         DateTime, nullable=True, comment="时效截止时间"
     )

@@ -104,7 +104,7 @@ export default function RiskView() {
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ textAlign: 'center', padding: 44, color: '#94a3b8' }}>
-                    队列已清空，暂无待处理升级件
+                    暂无待处理申请
                   </td>
                 </tr>
               ) : (

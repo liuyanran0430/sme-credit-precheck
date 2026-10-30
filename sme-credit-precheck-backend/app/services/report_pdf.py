@@ -4,6 +4,8 @@
 内容全部取自已落库的 AiReport，保证与生成时的规则版本一致。
 """
 
+import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,8 @@ from app.core import config
 from app.models.application import Application
 from app.models.report import AiReport
 from app.schemas.ai_classification import CATEGORY_LABELS, MaterialCategory
+
+logger = logging.getLogger(__name__)
 
 # A4 尺寸与页边距（pt）
 PAGE_WIDTH = 595
@@ -360,7 +364,7 @@ def _draw_title(writer: _PdfWriter, app: Application, report: AiReport) -> None:
     )
     writer.meta_row(
         ("客户经理：", app.manager_name),
-        ("提交时间：", _datetime(app.submitted_at)),
+        ("提交时间：", _datetime(app.created_at)),
     )
     writer.meta_row(
         ("统一社会信用代码：", app.credit_code),
@@ -581,9 +585,19 @@ def get_report_pdf(app: Application, report: AiReport) -> bytes:
     path = report_pdf_path(app.app_no)
     updated_at = report.updated_at
     if path.is_file() and updated_at and path.stat().st_mtime >= updated_at.timestamp() - 1:
+        logger.info("PDF 缓存命中, app_no=%s, 缓存文件=%s", app.app_no, path.name)
         return path.read_bytes()
 
+    t0 = time.perf_counter()
     content = build_report_pdf(app, report)
+    elapsed = time.perf_counter() - t0
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
+    size_kb = len(content) / 1024
+    logger.info(
+        "PDF 生成, app_no=%s, 耗时=%.2fs, 大小=%.1fKB",
+        app.app_no,
+        elapsed,
+        size_kb,
+    )
     return content

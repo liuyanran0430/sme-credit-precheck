@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.core import config
 from app.core.exceptions import BusinessException
+from app.core.logging import setup_logging
 from app.db.init_db import init_db
 
 OPENAPI_TAGS = [
@@ -22,7 +23,7 @@ OPENAPI_TAGS = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 开发环境自动建表；生产环境请执行 Alembic 迁移
+    setup_logging(debug=config.DEBUG)
     if config.DEBUG:
         init_db()
     yield

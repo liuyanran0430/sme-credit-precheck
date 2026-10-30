@@ -8,7 +8,7 @@ alembic>=1.13.0
 python-multipart>=0.0.9
 PyJWT>=2.8.0
 
-# 材料分类：LangChain + OpenAI 兼容接口 + OCR
+# LangChain + OpenAI 兼容接口 + OCR
 langchain>=0.3.0
 langchain-openai>=0.2.0
 PyMuPDF>=1.24.0

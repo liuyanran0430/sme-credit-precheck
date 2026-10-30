@@ -19,14 +19,28 @@ async function request(url, options = {}) {
 }
 
 /**
- * 获取申请列表（后端已按 id 倒序返回）。
+ * 获取申请列表，筛选（状态 / 贷款类型 / 关键字）与分页均由后端 SQL 完成。
+ * 返回 { items, total, statusCounts }，其中 statusCounts 为全量各状态数量，不受筛选影响。
  */
-export async function fetchApplications({ page = 1, pageSize = 100 } = {}) {
-  const response = await request(
-    `${API_PREFIX}/applications?page=${page}&page_size=${pageSize}`
-  )
+export async function fetchApplications({
+  page = 1,
+  pageSize = 100,
+  status = '',
+  product = '',
+  keyword = ''
+} = {}) {
+  const params = new URLSearchParams({ page, page_size: pageSize })
+  if (status) params.set('status', status)
+  if (product) params.set('product', product)
+  if (keyword) params.set('keyword', keyword)
+
+  const response = await request(`${API_PREFIX}/applications?${params.toString()}`)
   const data = await response.json()
-  return Array.isArray(data.items) ? data.items : []
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    total: Number(data.total) || 0,
+    statusCounts: data.status_counts || {}
+  }
 }
 
 /**

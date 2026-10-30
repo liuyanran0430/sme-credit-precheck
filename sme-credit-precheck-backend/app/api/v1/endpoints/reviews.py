@@ -1,14 +1,18 @@
+import logging
+
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_application_or_404, get_current_user, get_db
+from app.core.logging import LogContext
 from app.models.application import Application
 from app.models.enums import ApplicationStatus, ReviewDecision
 from app.models.review import ManualReview
 from app.models.user import User
 from app.schemas.review import ManualReviewCreate, ManualReviewRead
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -43,6 +47,12 @@ def submit_manual_review(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ManualReviewRead:
+    if app.status != ApplicationStatus.MANUAL:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="当前申请不在待人工核验状态",
+        )
+
     if not payload.items:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -51,7 +61,7 @@ def submit_manual_review(
 
     if payload.decision == "approve":
         decision = ReviewDecision.PASS
-        app.status = ApplicationStatus.RISK
+        new_status = ApplicationStatus.RISK
         app.supplement_note = None
         app.supplement_source = None
     elif payload.decision == "supplement":
@@ -61,14 +71,32 @@ def submit_manual_review(
                 detail="退回补件时补件说明不能为空",
             )
         decision = ReviewDecision.REJECT
-        app.status = ApplicationStatus.SUPPLEMENT
+        new_status = ApplicationStatus.SUPPLEMENT
         app.supplement_note = payload.supplement_note.strip()
         app.supplement_source = "manual"
     else:
         decision = ReviewDecision.DENY
-        app.status = ApplicationStatus.REJECTED
+        new_status = ApplicationStatus.REJECTED
         app.supplement_note = None
         app.supplement_source = None
+
+    app.status = new_status
+
+    with LogContext(app_no=app.app_no, user=user.username):
+        logger.info(
+            "人工复核提交, app_no=%s, 复核人=%s, 决策=%s, 核验项数=%d, 状态流转→%s",
+            app.app_no,
+            user.username,
+            payload.decision,
+            len(payload.items),
+            new_status.value,
+        )
+        if payload.decision == "supplement":
+            logger.info(
+                "人工复核退回补件, app_no=%s, 来源=manual, 补件说明=%s",
+                app.app_no,
+                (payload.supplement_note or "")[:50],
+            )
 
     review = ManualReview(
         app_id=app.id,

@@ -1,6 +1,8 @@
 """AI 材料分析服务。"""
 
+import logging
 import re
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -11,6 +13,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.logging import LogContext
 from app.models.application import Application
 from app.models.enums import AiConclusion, ApplicationStatus
 from app.models.material import Material
@@ -47,6 +50,8 @@ from app.schemas.ai_classification import (
 )
 from app.services.classifier import load_text
 from app.services.rule_config import extra_required_categories, load_rule_config
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------- 完整性规则
 
@@ -279,72 +284,148 @@ def generate_report(
     预审包含材料完整性判断、一致性校验（P1）与按下发 YAML 执行的
     准入规则逐条匹配，结论按规则文件的 conclusion_logic 推导。
     """
-    # 兜底 OCR 回写：补齐缺失的识别文本并随本次事务落库，
-    # 避免历史材料因 ocr_text 为空在每次预审时重复识别
-    for material in materials:
-        if not material.ocr_text:
-            text = _read_text(material)
-            if text.strip():
-                material.ocr_text = text
-
-    completeness = analyze_completeness(materials, app.product)
-    consistency = check_consistency(app, materials)
-
-    # 绑定本次预审使用的规则版本，并快照规则文件内容：
-    # 后续修改 YAML 不影响历史报告的判定依据
-    rule_config = load_rule_config(app.product)
-    rule_matching = match_rules(app, materials, consistency, rule_config)
-    risk_summary = summarize_risk_signals(completeness, consistency, rule_matching)
-    conflict_summary = collect_conflicts(materials, consistency, rule_matching)
-    summary = build_summary(completeness, consistency, rule_matching, rule_config)
-
-    report = db.scalar(
-        select(AiReport).where(AiReport.app_id == app.id).order_by(AiReport.id.desc())
-    )
-    if report is None:
-        report = AiReport(app_id=app.id, version="v1")
-        db.add(report)
-
-    report.conclusion = summary.conclusion
-    report.summary = summary.summary
-    report.pass_rate = Decimal(str(round(summary.pass_rate, 2)))
-    report.completeness = completeness.model_dump(mode="json")
-    report.consistency = consistency.model_dump(mode="json")
-    report.rule_results = rule_matching.model_dump(mode="json")
-    report.risk_signals = [item.model_dump(mode="json") for item in risk_summary.risk_signals]
-    report.conflicts = [item.model_dump(mode="json") for item in conflict_summary.conflicts]
-
-    report.rule_version = (
-        str(rule_config["version"]) if rule_config and rule_config.get("version") else None
-    )
-    report.rule_snapshot = jsonable_encoder(rule_config) if rule_config else None
-
-    # 同步申请表 AI 摘要，供申请列表展示最新预审结论
-    app.ai_summary = summary.summary
-
-    # 预审完成后推进申请进度：材料不齐 → 待补件；齐全 → 待人工核验
-    # 风控退回的补件（supplement_source=risk）补齐后直接回流风控复核队列
-    # 已进入风控复核及之后的状态不回退
-    if (
-        not completeness.is_complete
-        and app.status
-        in {ApplicationStatus.CHECK, ApplicationStatus.SUPPLEMENT, ApplicationStatus.MANUAL}
-    ):
-        app.status = ApplicationStatus.SUPPLEMENT
-    elif completeness.is_complete and app.status in {
-        ApplicationStatus.CHECK,
-        ApplicationStatus.SUPPLEMENT,
-    }:
-        back_to_risk = (
-            app.status == ApplicationStatus.SUPPLEMENT
-            and app.supplement_source == "risk"
+    with LogContext(app_no=app.app_no):
+        _total_start = time.perf_counter()
+        logger.info(
+            "generate_report 开始, app_no=%s, 产品=%s, 材料数=%d, 当前状态=%s",
+            app.app_no,
+            app.product,
+            len(materials),
+            app.status.value if app.status else "—",
         )
-        app.status = ApplicationStatus.RISK if back_to_risk else ApplicationStatus.MANUAL
-        app.supplement_source = None
 
-    db.commit()
-    db.refresh(report)
-    return report
+        # 兜底 OCR 回写：补齐缺失的识别文本并随本次事务落库，
+        # 避免历史材料因 ocr_text 为空在每次预审时重复识别
+        for material in materials:
+            if not material.ocr_text:
+                text = _read_text(material)
+                if text.strip():
+                    material.ocr_text = text
+
+        _t = time.perf_counter()
+        completeness = analyze_completeness(materials, app.product)
+        logger.debug(
+            "completeness 完成, 耗时=%.2fs, is_complete=%s, missing=%d",
+            time.perf_counter() - _t,
+            completeness.is_complete,
+            len(completeness.missing),
+        )
+
+        _t = time.perf_counter()
+        consistency = check_consistency(app, materials)
+        _fail_count = sum(1 for c in consistency.checks if c.status.value == "fail")
+        _uncertain_count = sum(1 for c in consistency.checks if c.status.value == "uncertain")
+        logger.debug(
+            "consistency 完成, 耗时=%.2fs, is_consistent=%s, fail=%d, uncertain=%d",
+            time.perf_counter() - _t,
+            consistency.is_consistent,
+            _fail_count,
+            _uncertain_count,
+        )
+
+        # 绑定本次预审使用的规则版本，并快照规则文件内容：
+        # 后续修改 YAML 不影响历史报告的判定依据
+        _t = time.perf_counter()
+        rule_config = load_rule_config(app.product)
+        rule_matching = match_rules(app, materials, consistency, rule_config)
+        logger.debug(
+            "rule_matching 完成, 耗时=%.2fs, 规则通过=%d/%d, 评分=%.0f, 版本=%s",
+            time.perf_counter() - _t,
+            rule_matching.pass_count,
+            rule_matching.total_count,
+            rule_matching.score or 0,
+            rule_config.get("version") if rule_config else "—",
+        )
+
+        _t = time.perf_counter()
+        risk_summary = summarize_risk_signals(completeness, consistency, rule_matching)
+        logger.debug(
+            "risk_summary 完成, 耗时=%.2fs, 风险信号数=%d",
+            time.perf_counter() - _t,
+            len(risk_summary.risk_signals),
+        )
+
+        _t = time.perf_counter()
+        conflict_summary = collect_conflicts(materials, consistency, rule_matching)
+        logger.debug(
+            "conflicts 完成, 耗时=%.2fs, 冲突数=%d",
+            time.perf_counter() - _t,
+            len(conflict_summary.conflicts),
+        )
+
+        _t = time.perf_counter()
+        summary = build_summary(completeness, consistency, rule_matching, rule_config)
+        logger.debug(
+            "summary 完成, 耗时=%.2fs, 结论=%s, 通过率=%.0f%%",
+            time.perf_counter() - _t,
+            summary.conclusion.value,
+            summary.pass_rate * 100,
+        )
+
+        report = db.scalar(
+            select(AiReport).where(AiReport.app_id == app.id).order_by(AiReport.id.desc())
+        )
+        if report is None:
+            report = AiReport(app_id=app.id, version="v1")
+            db.add(report)
+
+        report.conclusion = summary.conclusion
+        report.summary = summary.summary
+        report.pass_rate = Decimal(str(round(summary.pass_rate, 2)))
+        report.completeness = completeness.model_dump(mode="json")
+        report.consistency = consistency.model_dump(mode="json")
+        report.rule_results = rule_matching.model_dump(mode="json")
+        report.risk_signals = [item.model_dump(mode="json") for item in risk_summary.risk_signals]
+        report.conflicts = [item.model_dump(mode="json") for item in conflict_summary.conflicts]
+
+        report.rule_version = (
+            str(rule_config["version"]) if rule_config and rule_config.get("version") else None
+        )
+        report.rule_snapshot = jsonable_encoder(rule_config) if rule_config else None
+
+        # 同步申请表 AI 摘要，供申请列表展示最新预审结论
+        app.ai_summary = summary.summary
+
+        # 预审完成后推进申请进度：材料不齐 → 待补件；齐全 → 待人工核验
+        # 风控退回的补件（supplement_source=risk）补齐后直接回流风控复核队列
+        # 已进入风控复核及之后的状态不回退
+        _old_status = app.status
+        if (
+            not completeness.is_complete
+            and app.status
+            in {ApplicationStatus.CHECK, ApplicationStatus.SUPPLEMENT, ApplicationStatus.MANUAL}
+        ):
+            app.status = ApplicationStatus.SUPPLEMENT
+        elif completeness.is_complete and app.status in {
+            ApplicationStatus.CHECK,
+            ApplicationStatus.SUPPLEMENT,
+        }:
+            back_to_risk = (
+                app.status == ApplicationStatus.SUPPLEMENT
+                and app.supplement_source == "risk"
+            )
+            app.status = ApplicationStatus.RISK if back_to_risk else ApplicationStatus.MANUAL
+            app.supplement_source = None
+
+        db.commit()
+        db.refresh(report)
+
+        logger.info(
+            "generate_report 完成, app_no=%s, 结论=%s, 评分=%.0f, 规则通过=%d/%d, "
+            "风险=%d, 冲突=%d, 存疑=%d, 状态流转=%s→%s, 总耗时=%.2fs",
+            app.app_no,
+            summary.conclusion.value,
+            rule_matching.score or 0,
+            rule_matching.pass_count,
+            rule_matching.total_count,
+            len(risk_summary.risk_signals),
+            len(conflict_summary.conflicts),
+            rule_matching.uncertain_count,
+            _old_status.value if _old_status else "—",
+            app.status.value if app.status else "—",
+            time.perf_counter() - _total_start,
+        )
+        return report
 
 
 # ---------------------------------------------------------------- 一致性规则
@@ -768,7 +849,7 @@ def check_consistency(
         )
 
     # C7 征信授权时效
-    submit_date = (app.submitted_at or app.created_at).date()
+    submit_date = app.created_at.date()
     auth_materials = [
         m for m in materials if _category_of(m) == MaterialCategory.CREDIT_AUTH
     ]
@@ -1252,7 +1333,7 @@ def build_rule_fields(
     consistency: ConsistencyResult,
 ) -> dict[str, RuleField]:
     """按规则文件 field 定义，汇总申请与材料 OCR 的字段取值。"""
-    submit_date = (app.submitted_at or app.created_at).date()
+    submit_date = app.created_at.date()
     amount = float(app.amount)
     fields: dict[str, RuleField] = {
         "apply_amount": RuleField(amount, "application", f"{amount:,.2f} 万元")

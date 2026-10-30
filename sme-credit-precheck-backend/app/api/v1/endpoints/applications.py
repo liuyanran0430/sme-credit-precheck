@@ -1,5 +1,5 @@
+import logging
 import shutil
-from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_application_or_404, get_current_user, get_db
 from app.core import config
+from app.core.logging import LogContext, mask_amount, mask_credit_code
 from app.models.application import Application
 from app.models.enums import ApplicationStatus, ReviewDecision
 from app.models.material import Material
@@ -19,11 +20,13 @@ from app.models.user import User
 from app.schemas.application import (
     ApplicationCreate,
     ApplicationEdit,
+    ApplicationListPage,
     ApplicationRead,
     ApplicationUpdate,
 )
-from app.schemas.common import Page
 from app.services.analyzer import generate_report
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -51,22 +54,26 @@ def _next_app_no(db: Session, prefix: str) -> str:
 
 @router.get(
     "",
-    response_model=Page[ApplicationRead],
+    response_model=ApplicationListPage,
     summary="分页查询授信申请",
-    description="支持按状态、关键字（申请编号 / 企业名称）筛选，按创建时间倒序返回。",
+    description="支持按状态、贷款类型、关键字（申请编号 / 企业名称）筛选，按创建时间倒序返回；"
+    "响应附带全量各状态申请数量。",
 )
 def list_applications(
     status_filter: ApplicationStatus | None = Query(None, alias="status", description="申请状态"),
+    product: str | None = Query(None, description="贷款类型"),
     keyword: str | None = Query(None, description="申请编号或企业名称关键字"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页条数"),
     db: Session = Depends(get_db),
-) -> Page[ApplicationRead]:
+) -> ApplicationListPage:
     stmt = select(Application)
     if status_filter is not None:
         stmt = stmt.where(Application.status == status_filter)
+    if product:
+        stmt = stmt.where(Application.product == product.strip())
     if keyword:
-        like = f"%{keyword}%"
+        like = f"%{keyword.strip()}%"
         stmt = stmt.where(
             or_(Application.app_no.ilike(like), Application.company_name.ilike(like))
         )
@@ -75,6 +82,14 @@ def list_applications(
     rows = db.scalars(
         stmt.order_by(Application.id.desc()).offset((page - 1) * page_size).limit(page_size)
     ).all()
+
+    # 全量状态计数（不受筛选条件影响，供列表页统计条直接展示）
+    status_counts = {
+        (status.value if isinstance(status, ApplicationStatus) else str(status)): count
+        for status, count in db.execute(
+            select(Application.status, func.count()).group_by(Application.status)
+        ).all()
+    }
 
     # 带出每个申请最新一版 AI 预审结论（供列表页与风控队列展示）
     if rows:
@@ -105,7 +120,13 @@ def list_applications(
         for row in rows:
             row.risk_returned = row.id in returned_app_ids
 
-    return Page[ApplicationRead](items=list(rows), total=total, page=page, page_size=page_size)
+    return ApplicationListPage(
+        items=list(rows),
+        total=total,
+        page=page,
+        page_size=page_size,
+        status_counts=status_counts,
+    )
 
 
 @router.post(
@@ -136,7 +157,7 @@ def create_application(
         product=product,
         status=ApplicationStatus.CHECK,
         manager_name=user.full_name or user.username,
-        submitted_at=datetime.now(),
+        sla_deadline=None,
         ai_summary="申请已提交，等待材料检查与 AI 预审。",
     )
     db.add(application)
@@ -148,6 +169,18 @@ def create_application(
             status_code=status.HTTP_409_CONFLICT, detail="申请编号已存在，请重新提交"
         ) from None
     db.refresh(application)
+
+    with LogContext(app_no=application.app_no, user=user.username):
+        # 注意：Application.amount 已是万元单位，直接格式化避免与 mask_amount 的元→万转换重复
+        logger.info(
+            "创建申请, app_no=%s, 企业=%s, 信用代码=%s, 产品=%s, 金额=%s万, 客户经理=%s",
+            application.app_no,
+            application.company_name,
+            mask_credit_code(str(application.credit_code)),
+            application.product,
+            int(float(application.amount)),
+            application.manager_name,
+        )
     return application
 
 
@@ -175,15 +208,18 @@ def edit_application(
     db: Session = Depends(get_db),
 ) -> ApplicationRead:
     changes = payload.model_dump(exclude_none=True)
-    changed = False
+    changed_fields: list[str] = []
     for field, value in changes.items():
         normalized = value.strip() if isinstance(value, str) else value
         if getattr(app, field) != normalized:
             setattr(app, field, normalized)
-            changed = True
+            changed_fields.append(field)
 
-    if not changed:
+    if not changed_fields:
         return app
+
+    with LogContext(app_no=app.app_no):
+        logger.info("编辑申请, app_no=%s, 修改字段=%s", app.app_no, changed_fields)
 
     db.flush()
     materials = db.scalars(select(Material).where(Material.app_id == app.id)).all()
@@ -218,6 +254,9 @@ def delete_application(
     app: Application = Depends(get_application_or_404),
     db: Session = Depends(get_db),
 ) -> Response:
+    with LogContext(app_no=app.app_no):
+        logger.info("删除申请, app_no=%s", app.app_no)
+
     for model in (AiReport, ManualReview, RiskReview, Material):
         db.execute(delete(model).where(model.app_id == app.id))
     db.delete(app)

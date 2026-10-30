@@ -65,7 +65,6 @@ class ApplicationRead(ORMModel):
     product: str
     status: ApplicationStatus
     manager_name: str | None
-    submitted_at: datetime | None
     sla_deadline: datetime | None
     ai_summary: str | None
     supplement_note: str | None
@@ -77,3 +76,15 @@ class ApplicationRead(ORMModel):
         None, description="最新 AI 预审结论（非数据表字段，由最新预审报告带出）"
     )
     created_at: datetime
+
+
+class ApplicationListPage(BaseModel):
+    """申请列表分页响应，附带全量状态计数供列表页统计条使用。"""
+
+    items: list[ApplicationRead]
+    total: int = Field(description="当前筛选条件下的总记录数")
+    page: int
+    page_size: int
+    status_counts: dict[str, int] = Field(
+        default_factory=dict, description="各状态申请数量（不受筛选条件影响）"
+    )

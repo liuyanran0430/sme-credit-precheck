@@ -1,3 +1,5 @@
+import logging
+import time
 import uuid
 from decimal import Decimal
 from pathlib import Path
@@ -9,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_application_or_404, get_db
 from app.core import config
+from app.core.logging import LogContext
 from app.models.application import Application
 from app.models.enums import MaterialStatus
 from app.models.material import Material
@@ -21,6 +24,8 @@ from app.schemas.ai_errors import AiErrorResponse
 from app.schemas.material import MaterialRead, MaterialUpdate
 from app.services.analyzer import generate_report
 from app.services.classifier import classify_material
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -128,43 +133,61 @@ async def upload_materials(
     upload_root.mkdir(parents=True, exist_ok=True)
 
     materials: list[Material] = []
-    for filename, content in pending:
-        stored_name = f"{uuid.uuid4().hex}_{filename}"
-        file_url = f"{config.UPLOAD_DIR}/{app.app_no}/{stored_name}".replace("\\", "/")
-        (upload_root / stored_name).write_bytes(content)
-        material = Material(
-            app_id=app.id,
-            category="other",
-            file_name=filename,
-            file_url=file_url,
-            file_size=len(content),
-            version="v1.0",
-            status=MaterialStatus.PENDING,
-        )
-        db.add(material)
-        db.flush()
+    with LogContext(app_no=app.app_no):
+        for filename, content in pending:
+            stored_name = f"{uuid.uuid4().hex}_{filename}"
+            file_url = f"{config.UPLOAD_DIR}/{app.app_no}/{stored_name}".replace("\\", "/")
+            (upload_root / stored_name).write_bytes(content)
+            material = Material(
+                app_id=app.id,
+                category="other",
+                file_name=filename,
+                file_url=file_url,
+                file_size=len(content),
+                version="v1.0",
+                status=MaterialStatus.PENDING,
+            )
+            db.add(material)
+            db.flush()
 
-        # 上传后自动执行 AI 分类并回写类别、置信度与依据
-        payload = MaterialClassifyInput(
-            file_name=filename,
-            mime_type=SUFFIX_MIME[Path(filename).suffix.lower()],
-            file_path=file_url,
-        )
-        result, text = classify_material(payload, material.id)
-        top = result.candidate
-        material.category = top.category.value
-        material.confidence = Decimal(str(top.confidence))
-        material.reason = result.reason
-        # OCR 文本随材料落库，供预审与重新分类复用，避免重复识别
-        material.ocr_text = text or None
-        # 分类完成即视为抽取完成
-        material.status = MaterialStatus.OK
-        materials.append(material)
+            logger.info(
+                "上传材料, app_no=%s, 文件名=%s, 大小=%.1fMB",
+                app.app_no,
+                filename,
+                len(content) / 1024 / 1024,
+            )
 
-    db.commit()
-    for material in materials:
-        db.refresh(material)
-    return materials
+            # 上传后自动执行 AI 分类并回写类别、置信度与依据
+            t0 = time.perf_counter()
+            payload = MaterialClassifyInput(
+                file_name=filename,
+                mime_type=SUFFIX_MIME[Path(filename).suffix.lower()],
+                file_path=file_url,
+            )
+            result, text = classify_material(payload, material.id)
+            classify_elapsed = time.perf_counter() - t0
+            top = result.candidate
+            material.category = top.category.value
+            material.confidence = Decimal(str(top.confidence))
+            material.reason = result.reason
+            # OCR 文本随材料落库，供预审与重新分类复用，避免重复识别
+            material.ocr_text = text or None
+            # 分类完成即视为抽取完成
+            material.status = MaterialStatus.OK
+            materials.append(material)
+
+            logger.debug(
+                "AI 分类完成, 材料ID=%d, 结果=%s, 置信度=%.2f, 耗时=%.2fs",
+                material.id,
+                top.category.value,
+                top.confidence,
+                classify_elapsed,
+            )
+
+        db.commit()
+        for material in materials:
+            db.refresh(material)
+        return materials
 
 
 @router.post(
@@ -198,16 +221,29 @@ def classify_material_endpoint(
         file_path=material.file_url,
     )
     # 材料文件不变，优先复用库中已存 OCR 文本，避免重复识别
-    result, text = classify_material(payload, material.id, text=material.ocr_text)
-    top = result.candidate
-    material.category = top.category.value
-    material.confidence = Decimal(str(top.confidence))
-    material.reason = result.reason
-    material.ocr_text = text or material.ocr_text
-    # 分类完成即视为抽取完成
-    material.status = MaterialStatus.OK
-    db.commit()
-    db.refresh(material)
+    with LogContext(app_no=app.app_no):
+        t0 = time.perf_counter()
+        result, text = classify_material(payload, material.id, text=material.ocr_text)
+        classify_elapsed = time.perf_counter() - t0
+        top = result.candidate
+        material.category = top.category.value
+        material.confidence = Decimal(str(top.confidence))
+        material.reason = result.reason
+        material.ocr_text = text or material.ocr_text
+        # 分类完成即视为抽取完成
+        material.status = MaterialStatus.OK
+        db.commit()
+        db.refresh(material)
+
+        logger.info(
+            "重新分类材料, app_no=%s, 材料ID=%d, 文件名=%s → %s, 置信度=%.2f, 耗时=%.2fs",
+            app.app_no,
+            material_id,
+            material.file_name,
+            top.category.value,
+            top.confidence,
+            classify_elapsed,
+        )
 
     # 重新分类后同步刷新 AI 预审报告
     all_materials = db.scalars(

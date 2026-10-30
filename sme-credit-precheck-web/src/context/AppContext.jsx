@@ -28,7 +28,7 @@ export function normalizeApplication(row) {
     supplementSource: row.supplement_source || null,
     riskReturned: !!row.risk_returned,
     conclusion: row.conclusion || null,
-    submittedAt: row.submitted_at,
+    submittedAt: row.created_at,
     slaDeadline: row.sla_deadline,
     createdAt: row.created_at,
     ai: '暂无结论',
@@ -37,7 +37,7 @@ export function normalizeApplication(row) {
     passRate: null,
     sla: row.sla_deadline ? `截止 ${row.sla_deadline.slice(0, 10)}` : '—',
     slaLevel: 'muted',
-    submitDate: row.submitted_at ? row.submitted_at.slice(0, 10) : '—',
+    submitDate: row.created_at ? row.created_at.slice(0, 10) : '—',
     upgradeReason: '—',
     archived: false
   }
@@ -98,7 +98,7 @@ export function AppProvider({ children }) {
   useEffect(() => {
     let cancelled = false
     fetchApplications()
-      .then((items) => {
+      .then(({ items }) => {
         if (cancelled) return
         setApps(items.map(normalizeApplication))
       })

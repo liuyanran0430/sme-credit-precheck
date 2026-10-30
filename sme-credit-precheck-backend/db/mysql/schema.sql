@@ -24,8 +24,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `created_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_users_username` (`username`),
-  CONSTRAINT `ck_users_role` CHECK (`role` IN ('manager', 'risk', 'admin'))
+  UNIQUE KEY `uk_users_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户登录信息';
 
 -- ------------------------------------------------------------
@@ -38,11 +37,12 @@ CREATE TABLE IF NOT EXISTS `applications` (
   `credit_code`  VARCHAR(18)   NULL                    COMMENT '统一社会信用代码',
   `amount`       DECIMAL(12,2) NOT NULL                COMMENT '申请金额（万元）',
   `product`      VARCHAR(100)  NOT NULL                COMMENT '贷款产品',
-  `status`       VARCHAR(20)   NOT NULL DEFAULT 'check' COMMENT '状态：check/supplement/manual/risk/approved',
+  `status`       VARCHAR(20)   NOT NULL DEFAULT 'check' COMMENT '状态：check/supplement/manual/risk/approved/rejected',
   `manager_name` VARCHAR(50)   NULL                    COMMENT '客户经理',
-  `submitted_at` DATETIME      NULL                    COMMENT '提交时间',
   `sla_deadline` DATETIME      NULL                    COMMENT '时效截止时间',
   `ai_summary`   TEXT          NULL                    COMMENT 'AI 摘要',
+  `supplement_note`   VARCHAR(500) NULL                COMMENT '退回补件说明（人工/风控退回时写入）',
+  `supplement_source` VARCHAR(10)  NULL                COMMENT '补件来源：manual=人工复核退回，risk=风控退回',
   `created_at`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`   DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS `applications` (
   KEY `ix_applications_company_name` (`company_name`),
   KEY `ix_applications_credit_code` (`credit_code`),
   KEY `ix_applications_status` (`status`),
-  CONSTRAINT `ck_applications_status` CHECK (`status` IN ('check', 'supplement', 'manual', 'risk', 'approved'))
+  CONSTRAINT `ck_applications_status` CHECK (`status` IN ('check', 'supplement', 'manual', 'risk', 'approved', 'rejected'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='授信申请';
 
 -- ------------------------------------------------------------
@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS `ai_reports` (
   `app_id`        INT          NOT NULL           COMMENT '申请 ID',
   `version`       VARCHAR(16)  NOT NULL DEFAULT 'v1' COMMENT '报告版本',
   `rule_version`  VARCHAR(32)  NULL               COMMENT '规则版本',
+  `rule_snapshot` JSON         NULL               COMMENT '规则文件快照',
   `conclusion`    VARCHAR(20)  NOT NULL           COMMENT '结论：pass/attention/forbidden/manual',
   `summary`       TEXT         NULL               COMMENT '预审结论摘要',
   `pass_rate`     DECIMAL(5,2) NULL               COMMENT '预估通过率（%）',
@@ -109,7 +110,7 @@ CREATE TABLE IF NOT EXISTS `manual_reviews` (
   `id`               INT         NOT NULL AUTO_INCREMENT,
   `app_id`           INT         NOT NULL           COMMENT '申请 ID',
   `reviewer`         VARCHAR(50) NOT NULL           COMMENT '复核人',
-  `decision`         VARCHAR(20) NOT NULL           COMMENT '结论：pass/conditional/reject/further',
+  `decision`         VARCHAR(20) NOT NULL           COMMENT '结论：pass=通过转风控，reject=退回补件，deny=否决',
   `checklist_result` JSON        NULL               COMMENT '逐项复核结果',
   `comment`          TEXT        NULL               COMMENT '复核意见',
   `created_at`       DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -118,7 +119,7 @@ CREATE TABLE IF NOT EXISTS `manual_reviews` (
   KEY `ix_manual_reviews_app_id` (`app_id`),
   CONSTRAINT `fk_manual_reviews_app_id` FOREIGN KEY (`app_id`)
     REFERENCES `applications` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `ck_manual_reviews_decision` CHECK (`decision` IN ('pass', 'conditional', 'reject', 'further'))
+  CONSTRAINT `ck_manual_reviews_decision` CHECK (`decision` IN ('pass', 'conditional', 'reject', 'further', 'deny'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='人工复核记录';
 
 -- ------------------------------------------------------------
@@ -128,7 +129,7 @@ CREATE TABLE IF NOT EXISTS `risk_reviews` (
   `id`         INT          NOT NULL AUTO_INCREMENT,
   `app_id`     INT          NOT NULL           COMMENT '申请 ID',
   `reviewer`   VARCHAR(50)  NOT NULL           COMMENT '风控人员',
-  `decision`   VARCHAR(20)  NOT NULL           COMMENT '结论：pass/conditional/reject/further',
+  `decision`   VARCHAR(20)  NOT NULL           COMMENT '结论：pass=通过审批，reject=退回补件，deny=否决',
   `opinion`    TEXT         NOT NULL           COMMENT '风控复核意见',
   `mitigation` VARCHAR(500) NULL               COMMENT '风险缓释条件',
   `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -137,5 +138,5 @@ CREATE TABLE IF NOT EXISTS `risk_reviews` (
   KEY `ix_risk_reviews_app_id` (`app_id`),
   CONSTRAINT `fk_risk_reviews_app_id` FOREIGN KEY (`app_id`)
     REFERENCES `applications` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `ck_risk_reviews_decision` CHECK (`decision` IN ('pass', 'conditional', 'reject', 'further'))
+  CONSTRAINT `ck_risk_reviews_decision` CHECK (`decision` IN ('pass', 'conditional', 'reject', 'further', 'deny'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='风控复核记录';

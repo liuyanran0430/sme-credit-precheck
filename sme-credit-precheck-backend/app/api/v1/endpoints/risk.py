@@ -1,8 +1,11 @@
+import logging
+
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_application_or_404, get_current_user, get_db
+from app.core.logging import LogContext
 from app.models.application import Application
 from app.models.enums import ApplicationStatus, ReviewDecision
 from app.models.review import RiskReview
@@ -10,6 +13,7 @@ from app.models.user import User
 from app.schemas.application import ApplicationRead
 from app.schemas.review import RiskDecisionCreate, RiskReviewRead
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # 只读查询路由：登录即可访问（申请详情页需读取风控复核记录定位被拒环节）
@@ -76,6 +80,7 @@ def submit_risk_decision(
             detail="当前申请不在待风控复核状态",
         )
 
+    old_status = app.status
     review = RiskReview(
         app_id=app.id,
         reviewer=user.full_name or user.username,
@@ -85,18 +90,36 @@ def submit_risk_decision(
     )
     db.add(review)
     if payload.decision == "pass":
-        app.status = ApplicationStatus.APPROVED
+        new_status = ApplicationStatus.APPROVED
         app.supplement_note = None
         app.supplement_source = None
     elif payload.decision == "reject":
         # 风控退回补件：补件说明取风控复核意见，来源标记 risk，补齐后直接回流风控队列
-        app.status = ApplicationStatus.SUPPLEMENT
+        new_status = ApplicationStatus.SUPPLEMENT
         app.supplement_note = payload.opinion.strip()
         app.supplement_source = "risk"
     else:
-        app.status = ApplicationStatus.REJECTED
+        new_status = ApplicationStatus.REJECTED
         app.supplement_note = None
         app.supplement_source = None
+    app.status = new_status
+
+    with LogContext(app_no=app.app_no, user=user.username):
+        logger.info(
+            "风控复核提交, app_no=%s, 风控人=%s, 决策=%s, 状态流转=%s→%s",
+            app.app_no,
+            user.username,
+            payload.decision,
+            old_status.value,
+            new_status.value,
+        )
+        if payload.decision == "reject":
+            logger.info(
+                "风控退回补件, app_no=%s, 来源=risk, 补件说明=%s",
+                app.app_no,
+                payload.opinion.strip()[:50],
+            )
+
     db.commit()
     db.refresh(review)
     return review
