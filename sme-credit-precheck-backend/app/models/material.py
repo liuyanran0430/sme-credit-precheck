@@ -1,9 +1,9 @@
-from decimal import Decimal
+﻿from decimal import Decimal
 
 from sqlalchemy import ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base_class import Base
+from app.models.base import Base
 from app.models.enums import MaterialStatus, enum_column
 from app.models.mixins import TimestampMixin
 

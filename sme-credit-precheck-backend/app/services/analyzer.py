@@ -10,7 +10,6 @@ from decimal import Decimal
 from pathlib import Path
 
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.logging import LogContext
@@ -48,6 +47,7 @@ from app.schemas.ai_classification import (
     MaterialClassifyInput,
     MimeType,
 )
+from app.repositories import ReportRepository
 from app.services.classifier import load_text
 from app.services.rule_config import extra_required_categories, load_rule_config
 
@@ -362,26 +362,25 @@ def generate_report(
             summary.pass_rate * 100,
         )
 
-        report = db.scalar(
-            select(AiReport).where(AiReport.app_id == app.id).order_by(AiReport.id.desc())
+        # 写入或更新 AI 预审报告（commit=False，与 Application 状态更新同事务提交）
+        report = ReportRepository(db).upsert_for_app(
+            app.id,
+            conclusion=summary.conclusion,
+            summary=summary.summary,
+            pass_rate=Decimal(str(round(summary.pass_rate, 2))),
+            completeness=completeness.model_dump(mode="json"),
+            consistency=consistency.model_dump(mode="json"),
+            rule_results=rule_matching.model_dump(mode="json"),
+            risk_signals=[item.model_dump(mode="json") for item in risk_summary.risk_signals],
+            conflicts=[item.model_dump(mode="json") for item in conflict_summary.conflicts],
+            rule_version=(
+                str(rule_config["version"])
+                if rule_config and rule_config.get("version")
+                else None
+            ),
+            rule_snapshot=jsonable_encoder(rule_config) if rule_config else None,
+            commit=False,
         )
-        if report is None:
-            report = AiReport(app_id=app.id, version="v1")
-            db.add(report)
-
-        report.conclusion = summary.conclusion
-        report.summary = summary.summary
-        report.pass_rate = Decimal(str(round(summary.pass_rate, 2)))
-        report.completeness = completeness.model_dump(mode="json")
-        report.consistency = consistency.model_dump(mode="json")
-        report.rule_results = rule_matching.model_dump(mode="json")
-        report.risk_signals = [item.model_dump(mode="json") for item in risk_summary.risk_signals]
-        report.conflicts = [item.model_dump(mode="json") for item in conflict_summary.conflicts]
-
-        report.rule_version = (
-            str(rule_config["version"]) if rule_config and rule_config.get("version") else None
-        )
-        report.rule_snapshot = jsonable_encoder(rule_config) if rule_config else None
 
         # 同步申请表 AI 摘要，供申请列表展示最新预审结论
         app.ai_summary = summary.summary

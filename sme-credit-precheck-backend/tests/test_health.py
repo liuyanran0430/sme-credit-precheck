@@ -1,9 +1,9 @@
-import pytest
+﻿import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
 
 from app.core.security import hash_password
-from app.db.session import SessionLocal
+from app.models.session import SessionLocal
 from app.main import app
 from app.models.enums import UserRole
 from app.models.user import User

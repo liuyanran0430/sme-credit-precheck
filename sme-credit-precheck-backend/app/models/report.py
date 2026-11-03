@@ -1,10 +1,10 @@
-from decimal import Decimal
+﻿from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import ForeignKey, JSON, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base_class import Base
+from app.models.base import Base
 from app.models.enums import AiConclusion, enum_column
 from app.models.mixins import TimestampMixin
 

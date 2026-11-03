@@ -1,13 +1,14 @@
-import { authHeaders, handleUnauthorized, readError } from './http'
+import { authHeaders, handleUnauthorized, readError, syncTraceIdFromResponse } from './http'
 
 const API_PREFIX = '/api/v1'
 
-/** 统一请求封装：自动携带访问令牌，401 时清理登录态 */
+/** 统一请求封装：自动携带访问令牌 + trace_id，401 时清理登录态 */
 async function request(url, options = {}) {
   const response = await fetch(url, {
     ...options,
     headers: authHeaders(options.headers)
   })
+  syncTraceIdFromResponse(response)
   if (response.status === 401) {
     handleUnauthorized()
     throw new Error('登录已过期，请重新登录')

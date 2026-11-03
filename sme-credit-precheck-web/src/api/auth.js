@@ -1,4 +1,4 @@
-import { authHeaders, handleUnauthorized, readError, setToken } from './http'
+import { authHeaders, handleUnauthorized, readError, setToken, syncTraceIdFromResponse } from './http'
 
 const API_PREFIX = '/api/v1'
 
@@ -6,9 +6,10 @@ const API_PREFIX = '/api/v1'
 export async function login(username, password) {
   const response = await fetch(`${API_PREFIX}/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({ username, password })
   })
+  syncTraceIdFromResponse(response)
   if (!response.ok) {
     throw new Error(await readError(response))
   }
@@ -20,6 +21,7 @@ export async function login(username, password) {
 /** 用已保存的令牌获取当前登录用户 */
 export async function fetchMe() {
   const response = await fetch(`${API_PREFIX}/auth/me`, { headers: authHeaders() })
+  syncTraceIdFromResponse(response)
   if (response.status === 401) {
     setToken('')
     throw new Error('登录已过期，请重新登录')

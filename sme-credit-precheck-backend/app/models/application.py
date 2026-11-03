@@ -1,10 +1,10 @@
-from datetime import datetime
+﻿from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import DateTime, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base_class import Base
+from app.models.base import Base
 from app.models.enums import ApplicationStatus, enum_column
 from app.models.mixins import TimestampMixin
 

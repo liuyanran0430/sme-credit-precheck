@@ -33,7 +33,13 @@ export default function Sidebar() {
   const riskCount = apps.filter((a) => a.status === 'risk' && !a.archived).length
 
   return (
-    <aside className="app-sidebar">
+    <>
+      {/* 抽屉开关：隐藏 checkbox + 汉堡按钮 label + 遮罩 label，均为 .app-sidebar 的兄弟节点 */}
+      <input id="sidebar-toggle" type="checkbox" hidden />
+      <label htmlFor="sidebar-toggle" className="sidebar-toggle-btn" aria-label="打开侧边栏">☰</label>
+      <label htmlFor="sidebar-toggle" className="sidebar-backdrop" aria-hidden="true" />
+
+      <aside className="app-sidebar">
       <div className="sidebar-logo">
         <div className="logo-icon">🏦</div>
         <div>
@@ -72,5 +78,6 @@ export default function Sidebar() {
         </button>
       </div>
     </aside>
+    </>
   )
 }

@@ -52,6 +52,25 @@ CORS_ORIGINS = _env("CORS_ORIGINS", "")
 AUTH_SECRET_KEY = _env("AUTH_SECRET_KEY", "")
 AUTH_TOKEN_EXPIRE_MINUTES = _env_int("AUTH_TOKEN_EXPIRE_MINUTES", 480)
 
+# LLM 调用（OpenAI 兼容接口：Ollama / OpenRouter / DashScope 等均可）
+LLM_PROVIDER = _env("LLM_PROVIDER", "langchain-openai")  # 未来可扩展 ollama / dashscope
+LLM_API_KEY = _env("LLM_API_KEY", _env("OPENAI_API_KEY", ""))
+LLM_BASE_URL = _env("LLM_BASE_URL", _env("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+LLM_MODEL = _env("LLM_MODEL", "gpt-4o-mini")
+LLM_TIMEOUT_SECONDS = _env_int("LLM_TIMEOUT_SECONDS", 60)
+LLM_TEMPERATURE = float(_env("LLM_TEMPERATURE", "0.1"))
+LLM_MAX_RETRIES = _env_int("LLM_MAX_RETRIES", 2)
+LLM_RETRY_BASE_DELAY = float(_env("LLM_RETRY_BASE_DELAY", "2"))  # 指数退避首项（秒）：2 → 4 → 8
+
+# Embedding（默认用 LLM 同提供商的 text-embedding API；设为空字符串表示不启用）
+EMBEDDING_MODEL = _env("EMBEDDING_MODEL", "")
+EMBEDDING_DIMENSIONS = _env_int("EMBEDDING_DIMENSIONS", 1536)
+
+# RAG 向量库
+VECTOR_STORE_BACKEND = _env("VECTOR_STORE_BACKEND", "memory")  # memory | chroma | milvus
+VECTOR_STORE_PERSIST_DIR = _env("VECTOR_STORE_PERSIST_DIR", "data/chroma")
+VECTOR_STORE_COLLECTION = _env("VECTOR_STORE_COLLECTION", "credit_rules")
+
 
 def cors_origin_list() -> list[str]:
     """将逗号分隔的 CORS_ORIGINS 拆分为列表。"""

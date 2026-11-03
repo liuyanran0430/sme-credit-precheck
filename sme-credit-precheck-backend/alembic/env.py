@@ -4,7 +4,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.core import config as app_config
-from app.db.base import Base
+from app.models import Base  # 触发 models/__init__.py 执行，确保 Base.metadata 包含全库表
 
 config = context.config
 

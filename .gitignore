@@ -1,0 +1,63 @@
+# ============================================================
+# SME Credit Precheck — Root .gitignore（前后端 monorepo）
+# ============================================================
+
+# ---------- Python / Backend ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.env.local
+.env.*.local
+
+# 数据库 & 数据文件
+*.db
+*.sqlite3
+*.sqlite
+
+# 构建 & 测试产物
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+
+# 运行时生成目录
+sme-credit-precheck-backend/logs/
+sme-credit-precheck-backend/uploads/
+sme-credit-precheck-backend/data/
+
+# Alembic 迁移产物（versions/ 下的具体迁移文件要提交，.pyc 忽略）
+# — versions/.gitkeep 保留，确保空目录能提交
+
+# ---------- Node.js / Frontend ----------
+node_modules/
+sme-credit-precheck-web/dist/
+sme-credit-precheck-web/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---------- IDE / Editor ----------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ---------- 临时文件 ----------
+*.log
+*.tmp
+*.bak
+*.tar.gz
+*.zip

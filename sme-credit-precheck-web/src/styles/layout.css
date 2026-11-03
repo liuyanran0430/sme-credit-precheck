@@ -238,3 +238,74 @@
   font-size: 13px;
   color: var(--slate-500);
 }
+
+/* ============ 移动端抽屉（最低断点 375px） ============ */
+@media (max-width: 767px) {
+  /* 侧边栏默认滑出屏幕左侧 */
+  .app-sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: none; /* 抽屉弹出后由遮罩和按钮提供层次 */
+  }
+
+  /* 汉堡按钮（原生 CSS，不依赖 Tailwind utilities） */
+  .sidebar-toggle-btn {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 60;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #334155;
+    font-size: 18px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .sidebar-toggle-btn:hover { background: #f8fafc; }
+  .sidebar-toggle-btn:active { transform: scale(0.96); }
+
+  /* 遮罩层（默认 hidden，由 checkbox:checked ~ 选择器控制显示） */
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.48);
+    z-index: 40;
+    display: none;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    opacity: 0;
+    transition: opacity 0.22s ease;
+  }
+  #sidebar-toggle:checked ~ .sidebar-backdrop {
+    display: block;
+    opacity: 1;
+  }
+  #sidebar-toggle:checked ~ .app-sidebar {
+    transform: translateX(0);
+  }
+
+  /* 移动端主区域取消左侧缩进 */
+  .app-main {
+    margin-left: 0 !important;
+  }
+
+  /* 移动端 page padding 适配 375px 断点 */
+  .page {
+    padding: 14px 12px 24px;
+    max-width: 100%;
+  }
+}
+
+/* 768px 及以上：汉堡按钮和遮罩完全移除（桌面端不用） */
+@media (min-width: 768px) {
+  .sidebar-toggle-btn { display: none; }
+  .sidebar-backdrop { display: none !important; }
+}

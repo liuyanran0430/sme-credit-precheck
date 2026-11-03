@@ -1,4 +1,4 @@
-"""创建或更新系统登录用户。
+﻿"""创建或更新系统登录用户。
 
 用法（在后端根目录执行）：
     .\\.venv\\Scripts\\python.exe scripts/create_user.py --username manager --name 张晓峰 --role manager --password 123456
@@ -17,8 +17,8 @@ from sqlalchemy import select  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.core.security import hash_password  # noqa: E402
-from app.db.base import Base  # noqa: E402,F401
-from app.db.session import SessionLocal, engine  # noqa: E402
+from app.models.base import Base  # noqa: E402,F401
+from app.models.session import SessionLocal, engine  # noqa: E402
 from app.models.enums import UserRole  # noqa: E402
 from app.models.user import User  # noqa: E402
 

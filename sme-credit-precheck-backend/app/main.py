@@ -1,14 +1,15 @@
 from contextlib import asynccontextmanager
+import secrets
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1.router import api_router
+from app.api.router import api_router
 from app.core import config
 from app.core.exceptions import BusinessException
-from app.core.logging import setup_logging
-from app.db.init_db import init_db
+from app.core.logging import LogContext, setup_logging
+from app.services.init_db import init_db
 
 OPENAPI_TAGS = [
     {"name": "系统", "description": "健康检查等系统级接口"},
@@ -44,6 +45,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def trace_id_middleware(request: Request, call_next):
+    """全链路 trace_id 注入。
+
+    - 优先读取请求头 X-Request-ID（前端透传），否则生成 16 位 hex
+    - 写入 LogContext，请求内所有日志自动携带 trace=xxx
+    - 响应头回传 X-Trace-Id 供前端排查
+    """
+    trace_id = request.headers.get("X-Request-ID") or secrets.token_hex(8)
+    LogContext.set(trace_id=trace_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Trace-Id"] = trace_id
+        return response
+    finally:
+        LogContext.clear()
 
 
 @app.exception_handler(BusinessException)
