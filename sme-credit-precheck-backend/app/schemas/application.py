@@ -75,6 +75,17 @@ class ApplicationRead(ORMModel):
     conclusion: AiConclusion | None = Field(
         None, description="最新 AI 预审结论（非数据表字段，由最新预审报告带出）"
     )
+    can_precheck: bool = Field(
+        True,
+        description=(
+            "是否允许手动触发 AI 预审（非数据表字段）。"
+            "False 表示已做过预审且材料无改动，按钮置灰；True 表示可触发。"
+        ),
+    )
+    precheck_disabled_reason: str | None = Field(
+        None,
+        description="can_precheck=False 时的置灰原因（非数据表字段，前端按钮 tooltip 展示）",
+    )
     created_at: datetime
 
 

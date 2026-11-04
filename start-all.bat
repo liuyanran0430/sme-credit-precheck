@@ -6,7 +6,7 @@ title 小微企业授信智能预审系统 - 一键启动
 rem ============================================================
 rem  一键启动 MySQL、后端 FastAPI、前端 Vite
 rem  用法：start-all.bat [MySQL服务名] [后端端口] [前端端口]
-rem  示例：start-all.bat MySQL 8000 5173
+rem  示例：start-all.bat MySQL 8001 5173
 rem ============================================================
 
 set "ROOT=%~dp0"
@@ -18,7 +18,7 @@ set "MYSQL_SERVICE=%~1"
 set "BACKEND_PORT=%~2"
 set "FRONTEND_PORT=%~3"
 set "MYSQL_PORT=3306"
-if "%BACKEND_PORT%"=="" set "BACKEND_PORT=8000"
+if "%BACKEND_PORT%"=="" set "BACKEND_PORT=8001"
 if "%FRONTEND_PORT%"=="" set "FRONTEND_PORT=5173"
 
 echo.
@@ -149,7 +149,6 @@ echo     mysql -u root -p ^< sme-credit-precheck-backend\db\mysql\schema.sql
 echo   关闭本窗口不会停止服务，请在各自窗口按 Ctrl+C 结束。
 echo ============================================================
 echo.
-start "" "http://localhost:%FRONTEND_PORT%"
 pause
 exit /b 0
 

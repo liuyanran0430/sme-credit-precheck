@@ -1,13 +1,16 @@
-﻿from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user, require_roles
-from app.api import applications, auth, materials, reports, reviews, risk
+from app.api import applications, auth, frontend_logs, materials, reports, reviews, risk, tasks
 from app.models.enums import UserRole
 
 api_router = APIRouter()
 
 # 认证接口无需登录态
 api_router.include_router(auth.router, prefix="/auth", tags=["认证"])
+
+# 前端日志上报：登录前后都可能触发，不做鉴权
+api_router.include_router(frontend_logs.router, tags=["前端日志"])
 
 # 业务接口需登录后访问
 auth_required = [Depends(get_current_user)]
@@ -31,6 +34,9 @@ api_router.include_router(
     prefix="/applications/{app_no}/reviews",
     tags=["人工复核"],
     dependencies=auth_required,
+)
+api_router.include_router(
+    tasks.router, prefix="/tasks", tags=["后台任务"], dependencies=auth_required
 )
 
 # 风控复核记录查询为只读接口，登录即可访问

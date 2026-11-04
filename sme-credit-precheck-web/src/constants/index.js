@@ -1,6 +1,7 @@
 // 申请状态展示配置
 export const STATUS_MAP = {
   check: { label: '待材料检查', cls: 'check' },
+  precheck: { label: '待 AI 预审', cls: 'precheck' },
   supplement: { label: '待补件', cls: 'supplement' },
   manual: { label: '待人工核验', cls: 'manual' },
   risk: { label: '待风控复核', cls: 'risk' },

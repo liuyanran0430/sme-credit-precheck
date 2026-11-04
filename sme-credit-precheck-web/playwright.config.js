@@ -51,8 +51,8 @@ export default {
   // 自动启动前后端（reuseExistingServer: true 意味着如果 8000/5173 已被占用就直接用）
   webServer: [
     {
-      command: `"${pythonBin}" -m uvicorn app.main:app --host 127.0.0.1 --port 8000`,
-      port: 8000,
+      command: `"${pythonBin}" -m uvicorn app.main:app --host 127.0.0.1 --port 8001`,
+      port: 8001,
       cwd: backendDir,
       reuseExistingServer: true,
       timeout: 30000,

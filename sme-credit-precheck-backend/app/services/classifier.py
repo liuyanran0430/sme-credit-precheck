@@ -13,11 +13,10 @@ from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
-from pathlib import Path
 
+from app.llm import get_client
+from app.llm.retry import _is_context_overflow
 from app.schemas.ai_classification import (
     CATEGORY_LABELS,
     CategoryCandidate,
@@ -210,39 +209,42 @@ def load_text(payload: MaterialClassifyInput) -> str:
     return _extract_text(content, Path(payload.file_name).suffix.lower())
 
 
-@lru_cache(maxsize=1)
-def _build_chain():
-    """构建 LangChain 链：提示词 → LLM → 结构化输出。"""
-    llm = ChatOpenAI(
-        model=LLM_MODEL,
-        api_key=OPENAI_API_KEY,
-        base_url=OPENAI_BASE_URL,
-        temperature=0,
-        timeout=LLM_TIMEOUT_SECONDS,
-    )
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", SYSTEM_PROMPT),
-            ("human", "文件名：{file_name}\n文件名先验：{prior}\nOCR 文本：\n{text}"),
-        ]
-    )
-    return prompt | llm.with_structured_output(LlmClassification, method="json_mode")
-
-
 def classify_by_llm(
     file_name: str, prior: CategoryCandidate | None, text: str
 ) -> LlmClassification:
-    """第三步：LLM 内容分类（结构化输出）。"""
+    """第三步：LLM 内容分类（结构化输出，走 ModelClient 统一入口）。
+
+    调用经由 RecordingLLMClient，自动写入 llm_runs（含 request_id / 模型 / token / 耗时 / 状态）。
+
+    错误分级处理：
+    1. 网络 / 429 / 超时 → ModelClient 内部 with_retry 指数退避
+    2. 上下文超限 → OCR 文本截断后重试一次
+    3. JSON 解析失败 → ModelClient 内部重试一次，再失败抛异常由上层兜底
+    """
     if not OPENAI_API_KEY:
         raise RuntimeError("未配置 OPENAI_API_KEY")
-    prompt_text = (text or "（未识别到文本）")[:CLASSIFY_TEXT_MAX_CHARS]
-    return _build_chain().invoke(
-        {
-            "file_name": file_name,
-            "prior": f"{prior.label}（{prior.category.value}）" if prior else "无",
-            "text": prompt_text,
-        }
-    )
+
+    def _run(text_fragment: str) -> LlmClassification:
+        prompt_text = (text_fragment or "（未识别到文本）")[:CLASSIFY_TEXT_MAX_CHARS]
+        prior_label = f"{prior.label}（{prior.category.value}）" if prior else "无"
+        return get_client().structured(
+            prompt=f"文件名：{file_name}\n文件名先验：{prior_label}\nOCR 文本：\n{prompt_text}",
+            schema=LlmClassification,
+            system=SYSTEM_PROMPT,
+            method="json_mode",
+        )
+
+    # 第一次：完整截断后的 OCR 文本
+    try:
+        return _run(text)
+    except Exception as exc:  # noqa: BLE001 — 按类型处理
+        # 上下文超限 → 进一步截断后重试一次
+        if _is_context_overflow(exc):
+            logger.warning("OCR 文本 %d 字符导致上下文超限，截断到 %d 后重试",
+                           len(text), CLASSIFY_TEXT_MAX_CHARS // 2)
+            return _run(text[: CLASSIFY_TEXT_MAX_CHARS // 2])
+
+        raise
 
 
 def classify_material(

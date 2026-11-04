@@ -1,4 +1,4 @@
-﻿"""申请管理 endpoints：只负责收发请求与参数校验，DB 读写全部调 repositories。"""
+"""申请管理 endpoints：只负责收发请求与参数校验，DB 读写全部调 repositories。"""
 
 import logging
 import shutil
@@ -27,8 +27,6 @@ from app.schemas.application import (
     ApplicationRead,
     ApplicationUpdate,
 )
-from app.services.analyzer import generate_report
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -131,8 +129,75 @@ def create_application(
     response_model=ApplicationRead,
     summary="查询申请详情",
 )
-def get_application(app: Application = Depends(get_application_or_404)) -> ApplicationRead:
+def get_application(
+    app: Application = Depends(get_application_or_404),
+    db: Session = Depends(get_db),
+) -> ApplicationRead:
+    _fill_precheck_state(db, app)
     return app
+
+
+def _fill_precheck_state(db: Session, app: Application) -> None:
+    """计算并回填 can_precheck / precheck_disabled_reason。
+
+    置灰判定（单一事实来源，所有返回 ApplicationRead 的 endpoint 复用）：
+    ┌──────────────────┬───────────────────────────────────────────────────┐
+    │ 条件              │ can_precheck 含义                                   │
+    ├──────────────────┼───────────────────────────────────────────────────┤
+    │ 没有任何材料      │ False：请先上传材料                                 │
+    │ 有已抽取材料       │                                                   │
+    │  ├ 无预审报告     │ True：可首次触发预审                                │
+    │  └ 有预审报告      │                                                   │
+    │     ├ 材料有改动  │ True：可重新预审（材料更新时间 > 报告时间）         │
+    │     └ 材料无改动  │ False：已预审且材料未修改，无需重复                 │
+    └──────────────────┴───────────────────────────────────────────────────┘
+    """
+    from sqlalchemy import text
+
+    # 最新 AI 预审报告时间
+    latest_report_time = db.execute(
+        text(
+            "SELECT MAX(created_at) FROM ai_reports WHERE app_id = :app_id"
+        ),
+        {"app_id": app.id},
+    ).scalar()
+
+    # 最新材料改动时间（任意一条材料的 updated_at）
+    latest_material_change = db.execute(
+        text(
+            "SELECT MAX(updated_at) FROM materials WHERE app_id = :app_id"
+        ),
+        {"app_id": app.id},
+    ).scalar()
+
+    # 材料总数（区分"没上传"和"上传了但还没抽取"）
+    total_materials = db.execute(
+        text(
+            "SELECT COUNT(*) FROM materials WHERE app_id = :app_id"
+        ),
+        {"app_id": app.id},
+    ).scalar()
+
+    if total_materials == 0:
+        app.can_precheck = False
+        app.precheck_disabled_reason = "请先上传申请材料"
+        return
+
+    if latest_report_time is None:
+        # 首次预审
+        app.can_precheck = True
+        app.precheck_disabled_reason = None
+        return
+
+    if latest_material_change and latest_material_change > latest_report_time:
+        # 材料有新改动，可重新预审
+        app.can_precheck = True
+        app.precheck_disabled_reason = None
+        return
+
+    # 已做过预审且材料无改动
+    app.can_precheck = False
+    app.precheck_disabled_reason = "已完成 AI 预审，材料未发生修改"
 
 
 @router.patch(
@@ -164,10 +229,6 @@ def edit_application(
         logger.info("编辑申请, app_no=%s, 修改字段=%s", app.app_no, changed_fields)
 
     app_repo = ApplicationRepository(db)
-    mat_repo = MaterialRepository(db)
-    app_repo.flush()
-    materials = mat_repo.list_by_app(app.id)
-    generate_report(db, app, materials)
     app_repo.commit()
     app_repo.refresh(app)
     return app

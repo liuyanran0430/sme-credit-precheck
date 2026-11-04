@@ -1,4 +1,4 @@
-﻿"""AI 预审报告 endpoints：DB 查询全部调 ReportRepository。"""
+"""AI 预审报告 endpoints：DB 查询全部调 ReportRepository。"""
 
 import logging
 
@@ -10,9 +10,11 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_application_or_404, get_db
 from app.core.logging import LogContext
 from app.models.application import Application
-from app.repositories import MaterialRepository, ReportRepository
+from app.repositories import ReportRepository
 from app.schemas.report import AiReportGenerateRequest, AiReportRead
-from app.services.analyzer import generate_report as build_ai_report
+from app.schemas.task import TaskSubmitResponse
+from app.services import task_runner
+from app.services.analyzer import generate_report_for_app
 from app.services.report_pdf import get_report_pdf
 
 logger = logging.getLogger(__name__)
@@ -68,15 +70,21 @@ def export_report(
 
 @router.post(
     "/generate",
-    response_model=AiReportRead,
-    status_code=status.HTTP_201_CREATED,
-    summary="触发 AI 预审",
-    description="材料分类完成后自动执行，也可手动重新触发；生成或更新该申请的预审报告。",
+    response_model=TaskSubmitResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="触发 AI 预审（异步任务）",
+    description=(
+        "立即返回 request_id；预审报告在后台线程生成，"
+        "前端通过 GET /tasks/{request_id} 轮询任务状态，完成后调用 GET report 获取报告。"
+    ),
 )
 def generate_report(
     app: Application = Depends(get_application_or_404),
     payload: AiReportGenerateRequest | None = None,
-    db: Session = Depends(get_db),
-) -> AiReportRead:
-    materials = MaterialRepository(db).list_by_app(app.id)
-    return build_ai_report(db, app, materials)
+) -> TaskSubmitResponse:
+    request_id = task_runner.submit(
+        app.app_no,
+        task_runner.TASK_TYPE_REPORT_GENERATE,
+        lambda db: generate_report_for_app(db, app.id),
+    )
+    return TaskSubmitResponse(request_id=request_id, app_no=app.app_no)

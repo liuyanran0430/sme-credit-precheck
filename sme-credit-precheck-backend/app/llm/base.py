@@ -39,6 +39,7 @@ class LLMClient(ABC):
         prompt: str,
         schema: type,
         system: str | None = None,
+        method: str = "function_calling",
     ) -> Any:
         """结构化输出：prompt + schema → 直接反序列化为 schema 实例。"""
 

@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react'
+﻿import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp, normalizeApplication } from '../context/AppContext'
-import { createApplication, fetchApplication, generateReport, uploadMaterials } from '../api/applications'
+import { createApplication, uploadMaterials } from '../api/applications'
 import { PRODUCTS } from '../constants'
 import { formatSize, normalizeMaterial } from '../utils'
+import { logger } from '../utils/logger'
 import Modal from '../components/Modal'
 
 export default function NewAppModal({ onClose }) {
@@ -98,35 +99,21 @@ export default function NewAppModal({ onClose }) {
       const newId = created.app_no
       addApp(normalizeApplication(created))
 
-      // 申请创建成功即进入详情页，后台分阶段推进：材料检查（上传+OCR+分类）→ AI 预审 → 状态推进
+      // 申请创建成功即跳详情页，详情页会实时轮询材料检查进度
       setProcessing(newId, 'checking')
       toast(`申请 ${newId} 已提交，正在进行材料检查…`)
       setSubmitting(false)
       onClose()
-      navigate(`/detail/${newId}`)
 
-      uploadMaterials(newId, files.map((f) => f.file))
-        .then(async (uploaded) => {
-          setMaterials(newId, uploaded.map(normalizeMaterial))
-          toast(`申请 ${newId} 材料检查完成，正在进行 AI 预审…`)
-          setProcessing(newId, 'analyzing')
-          await generateReport(newId)
-          // 预审完成后申请状态已推进，同步前端状态以触发详情页摘要刷新
-          try {
-            const row = await fetchApplication(newId)
-            updateApp(newId, normalizeApplication(row))
-          } catch (error) {
-            console.error(error)
-          }
-          toast(`申请 ${newId} AI 预审完成`)
-        })
+      // 异步任务：接口立即返回 request_id，OCR + AI 分类在后端后台线程执行，
+      // 详情页通过轮询 materials 接口逐步显示进度（X/Y 与分类逐类出现）
+      const uploadPromise = uploadMaterials(newId, files.map((f) => f.file))
         .catch((error) => {
-          console.error(error)
+          logger.error('材料上传失败', error, { appNo: newId })
           toast(`申请 ${newId} 已创建，材料处理失败：${error.message || '请稍后重试'}`)
         })
-        .finally(() => {
-          setProcessing(newId, null)
-        })
+
+      navigate(`/detail/${newId}`)
     } catch (error) {
       setSubmitting(false)
       toast(error.message || '提交申请失败，请稍后重试')
@@ -234,7 +221,8 @@ export default function NewAppModal({ onClose }) {
         </div>
       </div>
 
-      <div className="hint">提交后系统将自动进行 OCR 抽取与 AI 预审，申请将进入「待材料检查」状态。</div>
+      <div className="hint">提交后系统将自动进行材料 OCR 抽取和分类，申请将进入「材料检查」状态。</div>
     </Modal>
   )
 }
+

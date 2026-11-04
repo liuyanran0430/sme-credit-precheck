@@ -42,7 +42,7 @@ class TestApplicationRepository:
             credit_code=CC,
             amount=Decimal("50"),
             product="普惠小微经营贷",
-            manager_name="manager",
+            manager_name="测试客户经理",
         )
         try:
             assert app.app_no.startswith("AP")
@@ -59,7 +59,7 @@ class TestApplicationRepository:
             credit_code="91330100123456789a",  # 末尾小写 a
             amount=Decimal("50"),
             product="普惠小微经营贷",
-            manager_name="manager",
+            manager_name="测试客户经理",
         )
         try:
             assert app.credit_code == "91330100123456789A"  # 转大写
@@ -89,7 +89,7 @@ class TestApplicationRepository:
             credit_code=CC,
             amount=Decimal("50"),
             product="普惠小微经营贷",
-            manager_name="manager",
+            manager_name="测试客户经理",
         )
         try:
             rows, total, _ = repo.list_paginated(keyword="关键词企业", page=1, page_size=10)
@@ -109,7 +109,7 @@ class TestApplicationRepository:
             credit_code=CC,
             amount=Decimal("50"),
             product="普惠小微经营贷",
-            manager_name="manager",
+            manager_name="测试客户经理",
         )
         repo.delete_cascade(app)
         assert repo.get_by_app_no(app.app_no) is None

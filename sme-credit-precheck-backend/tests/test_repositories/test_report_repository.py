@@ -24,7 +24,7 @@ def app_and_repo():
         credit_code=CC,
         amount=Decimal("50"),
         product="普惠小微经营贷",
-        manager_name="manager",
+        manager_name="测试客户经理",
     )
     yield app, ReportRepository(db)
     app_repo.delete_cascade(app)

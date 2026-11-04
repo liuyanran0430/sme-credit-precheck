@@ -3,7 +3,7 @@
 设计要点：
 - 用独立 SessionLocal 写库，不污染请求事务
 - 记录失败不影响 LLM 调用本身（best-effort）
-- 从 LogContext 取 trace_id 关联请求链路
+- 从 LogContext 取 request_id，与异步任务接口返回给前端的一致
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ def _write_run(
 ) -> None:
     """异步式写入一条 LLM 调用记录。失败仅打日志，不抛异常。"""
     try:
-        trace_id = LogContext.get().get("trace_id")
+        request_id = LogContext.get().get("request_id")
         with SessionLocal() as db:
             db.add(
                 LLMRun(
@@ -47,7 +47,7 @@ def _write_run(
                     latency_ms=round(latency_ms, 2),
                     status=status,
                     error_message=error_message,
-                    trace_id=trace_id,
+                    request_id=request_id,
                 )
             )
             db.commit()
@@ -103,10 +103,13 @@ class RecordingLLMClient(LLMClient):
         prompt: str,
         schema: type,
         system: str | None = None,
+        method: str = "function_calling",
     ) -> Any:
         start = time.perf_counter()
         try:
-            result = self._inner.structured(prompt=prompt, schema=schema, system=system)
+            result = self._inner.structured(
+                prompt=prompt, schema=schema, system=system, method=method
+            )
             latency = (time.perf_counter() - start) * 1000
             _write_run(
                 model=config.LLM_MODEL,

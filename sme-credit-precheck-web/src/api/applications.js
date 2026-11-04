@@ -61,7 +61,8 @@ export async function createApplication(payload) {
  */
 export async function fetchApplication(appNo) {
   const response = await request(
-    `${API_PREFIX}/applications/${encodeURIComponent(appNo)}`
+    `${API_PREFIX}/applications/${encodeURIComponent(appNo)}`,
+    { cache: 'no-store' }
   )
   return response.json()
 }
@@ -87,7 +88,8 @@ export async function updateApplication(appNo, payload) {
  */
 export async function fetchMaterials(appNo) {
   const response = await request(
-    `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/materials`
+    `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/materials`,
+    { cache: 'no-store' }
   )
   const data = await response.json()
   return Array.isArray(data) ? data : []
@@ -99,7 +101,7 @@ export async function fetchMaterials(appNo) {
 export async function fetchReport(appNo) {
   const response = await fetch(
     `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/report`,
-    { headers: authHeaders() }
+    { headers: authHeaders(), cache: 'no-store' }
   )
   if (response.status === 404) return null
   if (response.status === 401) {
@@ -131,13 +133,32 @@ export async function fetchRiskReviews(appNo) {
 }
 
 /**
- * 触发 AI 预审（材料分类完成后调用），返回最新预审报告。
+ * 触发 AI 预审（异步任务），立即返回 { request_id, app_no }；
+ * 报告生成完成后通过 fetchReport 获取。
  */
 export async function generateReport(appNo) {
   const response = await request(
     `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/report/generate`,
     { method: 'POST' }
   )
+  return response.json()
+}
+
+/**
+ * 轮询后台任务状态：{ request_id, task_type, app_no, status: running|done|failed, error }。
+ * 任务不存在或已过期时返回 null。
+ */
+export async function fetchTaskStatus(requestId) {
+  const response = await fetch(`${API_PREFIX}/tasks/${encodeURIComponent(requestId)}`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  })
+  if (response.status === 404) return null
+  if (response.status === 401) {
+    handleUnauthorized()
+    throw new Error('登录已过期，请重新登录')
+  }
+  if (!response.ok) throw new Error(await readError(response))
   return response.json()
 }
 
@@ -190,7 +211,8 @@ export async function submitRiskDecision(appNo, payload) {
 }
 
 /**
- * 上传申请材料，返回已创建的材料记录。
+ * 上传申请材料（异步任务），立即返回 { request_id, app_no }；
+ * OCR 与 AI 分类在后台执行，通过 fetchMaterials 轮询处理进度。
  */
 export async function uploadMaterials(appNo, files) {
   const formData = new FormData()

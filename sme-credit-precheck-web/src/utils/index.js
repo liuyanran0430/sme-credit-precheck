@@ -36,7 +36,16 @@ export function matStatusText(m) {
 }
 
 // 申请状态对应的步骤索引（审批环节暂无入口，已审批停留在审批节点显示数字 6）
-export const STEP_IDX = { check: 1, supplement: 1, manual: 3, pending: 3, risk: 4, rejected: 3, approved: 5 }
+// 步骤定义：0=已提交 1=材料检查 2=AI 预审 3=人工复核 4=风控复核 5=审批
+export const STEP_IDX = {
+  check: 1,        // 待材料检查 → 步骤1 进行中
+  precheck: 2,     // 待 AI 预审 → 步骤2 进行中（材料检查完成，等用户点按钮）
+  supplement: 1,   // 待补件 → 步骤1（补完材料需重新检查/抽取）
+  manual: 3,       // 待人工核验 → 步骤3 进行中
+  risk: 4,         // 待风控复核 → 步骤4 进行中
+  rejected: 3,     // 已否决 → 停在人工复核节点（被拒）
+  approved: 5      // 已审批 → 步骤5 完成
+}
 
 // 步骤定义
 export const STEPS = ['已提交', '材料检查', 'AI 预审', '人工复核', '风控复核', '审批']

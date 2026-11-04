@@ -1,15 +1,15 @@
 import { useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
-import { uploadMaterials, generateReport } from '../api/applications'
-import { formatSize, normalizeMaterial } from '../utils'
+import { uploadMaterials } from '../api/applications'
+import { formatSize } from '../utils'
+import { logger } from '../utils/logger'
 import Modal from '../components/Modal'
 
 export default function UploadModal({ appId, onClose, onUploaded }) {
-  const { setMaterials, toast } = useApp()
+  const { setProcessing, toast } = useApp()
   const [files, setFiles] = useState([])
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [phase, setPhase] = useState('upload')
   const fileInputRef = useRef(null)
 
   const handleClose = () => {
@@ -58,20 +58,18 @@ export default function UploadModal({ appId, onClose, onUploaded }) {
     }
 
     setSubmitting(true)
-    setPhase('upload')
     try {
-      const created = await uploadMaterials(appId, files.map((f) => f.file))
-      setMaterials(appId, (prev) => [...prev, ...created.map(normalizeMaterial)])
+      // 异步任务：接口立即返回 request_id，OCR/分类在后台执行，
+      // 进度由详情页 checking 轮询（fetchMaterials + fetchApplication）驱动
+      await uploadMaterials(appId, files.map((f) => f.file))
+      setProcessing(appId, 'checking')
 
-      setPhase('analyze')
-      await generateReport(appId)
-
-      toast(`已上传 ${files.length} 份资料${note ? '（' + note + '）' : ''}，材料抽取与 AI 预审已完成`)
+      toast(`已提交 ${files.length} 份资料，正在后台进行 OCR 抽取与智能分类…`)
       setSubmitting(false)
       onUploaded?.()
       onClose()
     } catch (error) {
-      console.error(error)
+      logger.error('材料上传失败', error, { appId, fileCount: files.length })
       setSubmitting(false)
       toast(error.message || '材料上传失败，请稍后重试')
     }
@@ -87,7 +85,7 @@ export default function UploadModal({ appId, onClose, onUploaded }) {
             取消
           </button>
           <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? (phase === 'analyze' ? 'AI 预审中...' : '上传中...') : '确认上传'}
+            {submitting ? '上传中...' : '确认上传'}
           </button>
         </>
       }

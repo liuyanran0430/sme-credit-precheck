@@ -6,13 +6,13 @@ title 小微企业授信智能预审系统 - 停止服务
 rem ============================================================
 rem  关闭前端 Vite 与后端 FastAPI 服务
 rem  用法：stop-all.bat [后端端口] [前端端口]
-rem  示例：stop-all.bat 8000 5173
+rem  示例：stop-all.bat 8001 5173
 rem  说明：MySQL 服务不会被关闭
 rem ============================================================
 
 set "BACKEND_PORT=%~1"
 set "FRONTEND_PORT=%~2"
-if "%BACKEND_PORT%"=="" set "BACKEND_PORT=8000"
+if "%BACKEND_PORT%"=="" set "BACKEND_PORT=8001"
 if "%FRONTEND_PORT%"=="" set "FRONTEND_PORT=5173"
 
 echo.

@@ -1,11 +1,13 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react'
 import { fetchApplications } from '../api/applications'
+import { logger } from '../utils/logger'
 
 const AppContext = createContext(null)
 
 // 申请尚无 AI 摘要时，按当前进度给出提示文案
 const STATUS_SUMMARY_HINTS = {
   check: 'AI 预审尚未开始，待材料分类完成后自动生成摘要。',
+  precheck: '材料已就绪，点击详情页「🤖 开始 AI 预审」即可生成预审摘要。',
   supplement: '材料待补件，补齐后 AI 将重新预审并更新摘要。',
   manual: 'AI 预审已完成，待人工复核确认。',
   risk: '已通过人工复核，待风控复核。',
@@ -39,7 +41,10 @@ export function normalizeApplication(row) {
     slaLevel: 'muted',
     submitDate: row.created_at ? row.created_at.slice(0, 10) : '—',
     upgradeReason: '—',
-    archived: false
+    archived: false,
+    // AI 预审手动触发判定（后端计算）
+    canPrecheck: row.can_precheck !== false,
+    precheckDisabledReason: row.precheck_disabled_reason || null
   }
 }
 
@@ -104,7 +109,7 @@ export function AppProvider({ children }) {
       })
       .catch((error) => {
         if (cancelled) return
-        console.error(error)
+        logger.error('加载申请列表失败', error)
         setApps([])
         toast('申请列表加载失败，请确认后端服务已启动')
       })

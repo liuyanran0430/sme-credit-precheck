@@ -1,8 +1,7 @@
-﻿"""材料管理 endpoints：DB 读写全部调 MaterialRepository。"""
+"""材料管理 endpoints：DB 读写全部调 MaterialRepository。"""
 
 import logging
 import time
-import uuid
 from decimal import Decimal
 from pathlib import Path
 
@@ -14,30 +13,22 @@ from app.api.deps import get_application_or_404, get_db
 from app.core import config
 from app.core.logging import LogContext
 from app.models.application import Application
-from app.models.enums import MaterialStatus
-from app.models.material import Material
-from app.repositories import ApplicationRepository, MaterialRepository
+from app.models.enums import ApplicationStatus, MaterialStatus
+from app.repositories import MaterialRepository
 from app.schemas.ai_classification import (
-    MimeType,
     MaterialClassifyInput,
     MaterialClassifyResponse,
 )
 from app.schemas.ai_errors import AiErrorResponse
 from app.schemas.material import MaterialRead, MaterialUpdate
-from app.services.analyzer import generate_report
+from app.schemas.task import TaskSubmitResponse
+from app.services import task_runner
 from app.services.classifier import classify_material
+from app.services.material_ingest import ALLOWED_SUFFIXES, SUFFIX_MIME, ingest_materials
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-SUFFIX_MIME = {
-    ".pdf": MimeType.PDF,
-    ".jpg": MimeType.JPEG,
-    ".jpeg": MimeType.JPEG,
-    ".png": MimeType.PNG,
-}
-ALLOWED_SUFFIXES = set(SUFFIX_MIME)
 
 FILE_MEDIA_TYPES = {
     ".pdf": "application/pdf",
@@ -93,19 +84,22 @@ def preview_material(
 
 @router.post(
     "/upload",
-    response_model=list[MaterialRead],
-    status_code=status.HTTP_201_CREATED,
-    summary="上传补充材料",
+    response_model=TaskSubmitResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="上传补充材料（异步任务）",
     description=(
-        "接收一个或多个文件，保存后自动执行 OCR 抽取与 AI 分类，材料状态置为已抽取。"
-        "AI 预审由前端在材料就绪后调用 /report/generate 触发，以呈现「材料检查→AI 预审」分阶段流转。"
+        "校验后立即返回 request_id；落盘、OCR 抽取与 AI 分类在后台线程执行，"
+        "前端通过 GET /tasks/{request_id} 轮询任务状态，通过 GET materials 轮询处理进度。"
+        "AI 预审由前端在材料就绪后调用 /report/generate 触发。"
     ),
 )
-async def upload_materials(
+def upload_materials(
     app: Application = Depends(get_application_or_404),
     files: list[UploadFile] = File(..., description="待上传的材料文件"),
-    db: Session = Depends(get_db),
-) -> list[MaterialRead]:
+) -> TaskSubmitResponse:
+    # 注意：本接口必须是同步 def（FastAPI 会放入线程池执行），不能改成 async def。
+    # 请求线程只做文件校验与读取；OCR/LLM/DB 等耗时处理全部移入后台任务线程，
+    # 避免请求挂起数十秒导致代理超时。
     max_bytes = config.MAX_UPLOAD_SIZE_MB * 1024 * 1024
     pending: list[tuple[str, bytes]] = []
 
@@ -116,7 +110,7 @@ async def upload_materials(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"不支持的文件格式：{filename}",
             )
-        content = await file.read()
+        content = file.file.read()
         if len(content) > max_bytes:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -124,61 +118,12 @@ async def upload_materials(
             )
         pending.append((filename, content))
 
-    upload_root = Path(config.UPLOAD_DIR) / app.app_no
-    upload_root.mkdir(parents=True, exist_ok=True)
-
-    mat_repo = MaterialRepository(db)
-    materials: list[Material] = []
-    with LogContext(app_no=app.app_no):
-        for filename, content in pending:
-            stored_name = f"{uuid.uuid4().hex}_{filename}"
-            file_url = f"{config.UPLOAD_DIR}/{app.app_no}/{stored_name}".replace("\\", "/")
-            (upload_root / stored_name).write_bytes(content)
-            material = Material(
-                app_id=app.id,
-                category="other",
-                file_name=filename,
-                file_url=file_url,
-                file_size=len(content),
-                version="v1.0",
-                status=MaterialStatus.PENDING,
-            )
-            mat_repo.add(material)
-
-            logger.info(
-                "上传材料, app_no=%s, 文件名=%s, 大小=%.1fMB",
-                app.app_no,
-                filename,
-                len(content) / 1024 / 1024,
-            )
-
-            t0 = time.perf_counter()
-            payload = MaterialClassifyInput(
-                file_name=filename,
-                mime_type=SUFFIX_MIME[Path(filename).suffix.lower()],
-                file_path=file_url,
-            )
-            result, text = classify_material(payload, material.id)
-            classify_elapsed = time.perf_counter() - t0
-            top = result.candidate
-            material.category = top.category.value
-            material.confidence = Decimal(str(top.confidence))
-            material.reason = result.reason
-            material.ocr_text = text or None
-            material.status = MaterialStatus.OK
-            materials.append(material)
-
-            logger.debug(
-                "AI 分类完成, 材料ID=%d, 结果=%s, 置信度=%.2f, 耗时=%.2fs",
-                material.id,
-                top.category.value,
-                top.confidence,
-                classify_elapsed,
-            )
-
-        mat_repo.commit()
-        mat_repo.refresh_many(materials)
-        return materials
+    request_id = task_runner.submit(
+        app.app_no,
+        task_runner.TASK_TYPE_MATERIALS_UPLOAD,
+        lambda db: ingest_materials(db, app.id, app.app_no, pending),
+    )
+    return TaskSubmitResponse(request_id=request_id, app_no=app.app_no)
 
 
 @router.post(
@@ -193,6 +138,12 @@ def classify_material_endpoint(
     app: Application = Depends(get_application_or_404),
     db: Session = Depends(get_db),
 ) -> MaterialClassifyResponse:
+    # 状态守卫：材料检查中禁止重新分类，避免与后台分类任务并发写同一材料
+    if app.status == ApplicationStatus.CHECK:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="材料检查中，暂不可修改分类",
+        )
     mat_repo = MaterialRepository(db)
     material = mat_repo.get_by_id_and_app(material_id, app.id)
     if material is None:
@@ -234,9 +185,6 @@ def classify_material_endpoint(
             classify_elapsed,
         )
 
-    # 重新分类后同步刷新 AI 预审报告
-    all_materials = mat_repo.list_by_app(app.id)
-    generate_report(db, app, all_materials)
     return result
 
 
@@ -253,6 +201,12 @@ def update_material(
     app: Application = Depends(get_application_or_404),
     db: Session = Depends(get_db),
 ) -> MaterialRead:
+    # 状态守卫：材料检查中（后台 OCR/AI 分类写入中）禁止人工修改分类，避免写入冲突
+    if app.status == ApplicationStatus.CHECK:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="材料检查中，暂不可修改分类",
+        )
     mat_repo = MaterialRepository(db)
     material = mat_repo.get_by_id_and_app(material_id, app.id)
     if material is None:
@@ -280,9 +234,6 @@ def delete_material(
 
     file_url = material.file_url
     mat_repo.delete(material)
-
-    remaining = mat_repo.list_by_app(app.id)
-    generate_report(db, app, remaining)
 
     if file_url:
         file_path = Path(file_url)

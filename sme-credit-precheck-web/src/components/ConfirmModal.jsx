@@ -17,6 +17,7 @@ export default function ConfirmModal({
     <Modal
       title={title}
       onClose={onCancel}
+      closeOnMaskClick={true}
       footer={
         <div className="confirm-foot">
           <button className="btn btn-secondary" onClick={onCancel} disabled={busy}>

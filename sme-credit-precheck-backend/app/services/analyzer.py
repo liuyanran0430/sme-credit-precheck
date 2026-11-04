@@ -47,7 +47,7 @@ from app.schemas.ai_classification import (
     MaterialClassifyInput,
     MimeType,
 )
-from app.repositories import ReportRepository
+from app.repositories import MaterialRepository, ReportRepository
 from app.services.classifier import load_text
 from app.services.rule_config import extra_required_categories, load_rule_config
 
@@ -276,6 +276,19 @@ def analyze_completeness(
     )
 
 
+def generate_report_for_app(db: Session, app_id: int) -> AiReport:
+    """后台任务入口：按 app_id 重新加载申请与材料后执行 AI 预审。
+
+    供 task_runner 后台线程调用——请求线程的 ORM 对象与 session 不能跨线程复用，
+    必须在新 session 内重新查询。
+    """
+    app = db.get(Application, app_id)
+    if app is None:
+        raise ValueError(f"申请不存在: app_id={app_id}")
+    materials = MaterialRepository(db).list_by_app(app_id)
+    return generate_report(db, app, materials)
+
+
 def generate_report(
     db: Session, app: Application, materials: Sequence[Material]
 ) -> AiReport:
@@ -385,18 +398,24 @@ def generate_report(
         # 同步申请表 AI 摘要，供申请列表展示最新预审结论
         app.ai_summary = summary.summary
 
-        # 预审完成后推进申请进度：材料不齐 → 待补件；齐全 → 待人工核验
-        # 风控退回的补件（supplement_source=risk）补齐后直接回流风控复核队列
-        # 已进入风控复核及之后的状态不回退
+        # 预审完成后推进申请进度：
+        #   precheck / supplement（manual 兜底）→ 材料不齐→待补件；齐全→待人工核验
+        #   风控退回的补件（supplement_source=risk）补齐后直接回流风控复核队列
+        #   已进入风控复核及之后的状态不回退
+        #   check 状态不在这里推进，材料分类接口完成后会自动推到 precheck
         _old_status = app.status
         if (
             not completeness.is_complete
             and app.status
-            in {ApplicationStatus.CHECK, ApplicationStatus.SUPPLEMENT, ApplicationStatus.MANUAL}
+            in {
+                ApplicationStatus.PRECHECK,
+                ApplicationStatus.SUPPLEMENT,
+                ApplicationStatus.MANUAL,
+            }
         ):
             app.status = ApplicationStatus.SUPPLEMENT
         elif completeness.is_complete and app.status in {
-            ApplicationStatus.CHECK,
+            ApplicationStatus.PRECHECK,
             ApplicationStatus.SUPPLEMENT,
         }:
             back_to_risk = (

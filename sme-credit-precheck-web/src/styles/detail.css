@@ -308,6 +308,22 @@
 }
 
 /* AI 预审摘要 */
+/* 处理文件过程中的摘要加载态 */
+.ai-summary-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 12px;
+  color: var(--slate-400);
+  font-size: 13px;
+}
+
+.ai-summary-loading .processing-spinner {
+  width: 18px;
+  height: 18px;
+}
+
 .ai-primary {
   background: var(--slate-50);
   border-left: 4px solid #10b981;

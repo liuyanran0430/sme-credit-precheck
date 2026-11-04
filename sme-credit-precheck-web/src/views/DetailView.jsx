@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, Fragment } from 'react'
+﻿import { useEffect, useRef, useState, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useApp, normalizeApplication } from '../context/AppContext'
 import { STATUS_MAP, MATERIAL_CATEGORIES } from '../constants'
@@ -8,10 +8,13 @@ import {
   fetchMaterials,
   fetchReport,
   fetchRiskReviews,
+  fetchTaskStatus,
+  generateReport,
   materialFileUrl,
   deleteMaterial
 } from '../api/applications'
 import { fmt, matStatusText, normalizeMaterial, STEP_IDX } from '../utils'
+import { logger } from '../utils/logger'
 import Stepper from '../components/Stepper'
 import UploadModal from '../modals/UploadModal'
 import PreviewModal from '../modals/PreviewModal'
@@ -38,18 +41,21 @@ function buildMissingLabels(data, product) {
 
 export default function DetailView() {
   const { id } = useParams()
-  const { apps, getMaterials, setMaterials, updateApp, processingMap, toast } = useApp()
+  const { apps, getMaterials, setMaterials, updateApp, setProcessing: setProc, processingMap, toast } = useApp()
   const navigate = useNavigate()
   const [showUpload, setShowUpload] = useState(false)
 
   const app = apps.find((a) => a.id === id) || apps[0]
   // 当前申请的后台处理阶段：checking=材料检查中，analyzing=AI 预审中
   const processing = app ? processingMap[app.id] : null
+  // 材料检查中（OCR+AI 分类执行期）：禁止修改分类，避免与后台写入冲突
+  const materialChecking = processing === 'checking' || app?.status === 'check'
   const [expanded, setExpanded] = useState({})
   const [preview, setPreview] = useState(null)
   const [showCategory, setShowCategory] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null) // 待删除的材料对象
   const [deleting, setDeleting] = useState(false)
+  const [preChecking, setPreChecking] = useState(false)
   // 后端判定的缺失必备材料（公共五类 + 产品专属），由规则文件驱动
   const [missingCats, setMissingCats] = useState([])
   // AI 预审报告（用于详情页的预审摘要）
@@ -61,8 +67,49 @@ export default function DetailView() {
   const reloadMaterials = () => {
     fetchMaterials(app.id)
       .then((rows) => setMaterials(app.id, rows.map(normalizeMaterial)))
-      .catch((error) => console.error(error))
+      .catch((error) => logger.error('加载材料清单失败', error, { appNo: app.id }))
   }
+
+  // 材料检查阶段实时轮询：每 1.5s 刷新材料清单与申请状态
+  // 后端 uploadMaterials 先批量 INSERT 全量 pending 记录，再串行 OCR+分类变 ok
+  // 前端轮询就能逐步看到 pending→ok 的进度，材料清单逐步完整
+  useEffect(() => {
+    if (processing !== 'checking') return
+    let stopped = false
+    const timer = setInterval(async () => {
+      if (stopped) return
+      try {
+        // 刷材料（新增 pending 记录、ok 数量增加）
+        const rows = await fetchMaterials(app.id)
+        setMaterials(app.id, rows.map(normalizeMaterial))
+        // 刷申请状态（检测 check→precheck 推进）
+        const row = await fetchApplication(app.id)
+        updateApp(app.id, normalizeApplication(row))
+        // 状态已推进（不再是 check），停轮询
+        if (row.status !== 'check') {
+          stopped = true
+          clearInterval(timer)
+          setProc(app.id, null)
+        }
+      } catch (e) {
+        // 静默忽略单次失败，下次继续
+      }
+    }, 500)
+
+    // 120s 超时兜底，防止轮询卡死
+    const timeout = setTimeout(() => {
+      stopped = true
+      clearInterval(timer)
+      setProc(app.id, null)
+    }, 120000)
+
+    return () => {
+      stopped = true
+      clearInterval(timer)
+      clearTimeout(timeout)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [processing, app?.id])
 
   // 刷新 AI 预审摘要与缺件提示（统一取预审落库快照 report.completeness）
   const refreshReport = () => {
@@ -71,14 +118,46 @@ export default function DetailView() {
         setReport(data)
         setMissingCats(buildMissingLabels(data?.completeness, app.product))
       })
-      .catch((error) => console.error(error))
+      .catch((error) => logger.error('加载预审报告失败', error, { appNo: app.id }))
   }
 
   // 刷新申请状态（AI 预审完成后进度会推进）
   const refreshApp = () => {
     fetchApplication(app.id)
       .then((row) => updateApp(app.id, normalizeApplication(row)))
-      .catch((error) => console.error(error))
+      .catch((error) => logger.error('刷新申请状态失败', error, { appNo: app.id }))
+  }
+
+  // 手动触发 AI 预审（上传资料按钮右侧「开始 AI 预审」按钮点击处理）
+  // 异步任务模式：generateReport 立即返回 request_id，随后每 1s 轮询任务状态，
+  // done 后刷新报告与申请状态；failed/超时则提示失败
+  const handleStartPrecheck = async () => {
+    if (!app?.canPrecheck || preChecking || processing) return
+    setPreChecking(true)
+    toast('正在执行 AI 预审，请稍候…')
+    try {
+      const { request_id: requestId } = await generateReport(app.id)
+      let task = null
+      // 最长轮询 5 分钟（300 次 × 1s）
+      for (let i = 0; i < 300; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        task = await fetchTaskStatus(requestId)
+        if (task && task.status !== 'running') break
+      }
+      if (!task) throw new Error('任务状态查询失败，请刷新页面查看结果')
+      if (task.status === 'failed') throw new Error(task.error || '预审任务执行失败')
+      if (task.status !== 'done') throw new Error('预审超时，请稍后刷新查看结果')
+
+      setProc(app.id, null)
+      refreshApp()
+      refreshReport()
+      toast('AI 预审完成')
+    } catch (error) {
+      logger.error('AI 预审失败', error, { appNo: app.id })
+      toast(`AI 预审失败：${error.message || '请稍后重试'}`)
+    } finally {
+      setPreChecking(false)
+    }
   }
 
   // 打开材料文件预览（页内弹窗）
@@ -149,7 +228,7 @@ export default function DetailView() {
         if (!cancelled) setMaterials(app.id, rows.map(normalizeMaterial))
       })
       .catch((error) => {
-        if (!cancelled) console.error(error)
+        if (!cancelled) logger.error('加载材料清单失败', error, { appNo: app.id })
       })
     // 同步最新申请状态，确保预审后的进度条正确
     fetchApplication(app.id)
@@ -157,7 +236,7 @@ export default function DetailView() {
         if (!cancelled) updateApp(app.id, normalizeApplication(row))
       })
       .catch((error) => {
-        if (!cancelled) console.error(error)
+        if (!cancelled) logger.error('刷新申请状态失败', error, { appNo: app.id })
       })
     // AI 预审摘要与缺件提示：统一读取预审落库快照，不再实时计算
     fetchReport(app.id)
@@ -168,7 +247,7 @@ export default function DetailView() {
         }
       })
       .catch((error) => {
-        if (!cancelled) console.error(error)
+        if (!cancelled) logger.error('加载预审报告失败', error, { appNo: app.id })
       })
     return () => {
       cancelled = true
@@ -277,6 +356,18 @@ export default function DetailView() {
           <button className="btn btn-primary" onClick={() => setShowUpload(true)}>
             ＋ 上传资料
           </button>
+          <button
+            className="btn btn-primary"
+            onClick={handleStartPrecheck}
+            disabled={!app?.canPrecheck || preChecking || processing}
+            title={
+              !app?.canPrecheck
+                ? app?.precheckDisabledReason || '已完成 AI 预审，材料未发生修改'
+                : '开始 AI 预审'
+            }
+          >
+            {preChecking ? '预审中…' : '🤖 开始 AI 预审'}
+          </button>
         </div>
       </div>
 
@@ -284,7 +375,19 @@ export default function DetailView() {
       {processing === 'checking' && (
         <div className="processing-banner">
           <span className="processing-spinner" />
-          材料检查中：正在上传文件并进行 OCR 抽取与智能分类，完成后将自动进入 AI 预审…
+          {mats.length === 0 ? (
+            '材料检查中：正在上传文件并进行 OCR 抽取与智能分类…'
+          ) : (
+            <span>
+              材料检查中：已处理{' '}
+              <strong>{mats.filter((m) => m.status === 'ok').length}</strong>
+              {' / '}
+              <strong>{mats.length}</strong>
+              {mats.filter((m) => m.status === 'ok').length === mats.length
+                ? '（即将完成，完成后自动进入 AI 预审）'
+                : '（AI 正在逐个识别与分类）'}
+            </span>
+          )}
         </div>
       )}
       {processing === 'analyzing' && (
@@ -350,7 +453,8 @@ export default function DetailView() {
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => setShowCategory(true)}
-              disabled={!mats.length}
+              disabled={!mats.length || materialChecking}
+              title={materialChecking ? '材料检查中，暂不可修改分类' : undefined}
             >
               修改分类
             </button>
@@ -440,14 +544,27 @@ export default function DetailView() {
           <div className="panel-head">
             <h3>AI 预审摘要</h3>
             <div className="panel-meta">
-              {report
-                ? `报告版本 ${report.version || '—'} · 规则版本 ${report.rule_version || '—'} · 生成于 ${generatedAt}`
-                : '暂无预审报告'}
+              {preChecking
+                ? 'AI 预审执行中，摘要生成后将自动更新'
+                : report
+                  ? `报告版本 ${report.version || '—'} · 规则版本 ${report.rule_version || '—'} · 生成于 ${generatedAt}`
+                  : processing === 'checking'
+                    ? '材料检查中，预审完成后可手动开始'
+                    : '暂无预审报告'}
             </div>
           </div>
           <div className="panel-body">
-            {!report ? (
-              <div className="mat-empty">该申请尚未生成 AI 预审报告。</div>
+            {preChecking ? (
+              <div className="ai-summary-loading">
+                <span className="processing-spinner" />
+                <span>正在执行准入规则匹配与一致性校验，AI 预审摘要生成中…</span>
+              </div>
+            ) : !report ? (
+              <div className="mat-empty">
+                {processing === 'checking'
+                  ? '材料检查中，检查完成后可点击上方「🤖 开始 AI 预审」生成摘要。'
+                  : '该申请尚未生成 AI 预审报告，点击上方「🤖 开始 AI 预审」即可生成。'}
+              </div>
             ) : (
               <>
                 <div className={`ai-verdict ${verdictTone}`}>
@@ -520,10 +637,20 @@ export default function DetailView() {
             )}
           </div>
           <div className="panel-foot right">
-            <button className="btn btn-secondary" onClick={() => navigate(`/report/${app.id}`)}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => navigate(`/report/${app.id}`)}
+              disabled={!report}
+              title={!report ? '请先点击「开始 AI 预审」生成报告' : ''}
+            >
               查看完整预审报告
             </button>
-            <button className="btn btn-primary" onClick={() => navigate(`/review/${app.id}`)}>
+            <button
+              className="btn btn-primary"
+              onClick={() => navigate(`/review/${app.id}`)}
+              disabled={!report}
+              title={!report ? '请先完成 AI 预审，再进入人工复核' : ''}
+            >
               进入人工复核
             </button>
           </div>
@@ -570,3 +697,4 @@ export default function DetailView() {
     </div>
   )
 }
+

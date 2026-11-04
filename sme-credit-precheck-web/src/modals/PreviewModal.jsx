@@ -35,7 +35,7 @@ export default function PreviewModal({ appId, material, onClose }) {
   if (!material || !material.id) return null
 
   return (
-    <Modal wide title={material.name} onClose={onClose}>
+    <Modal wide title={material.name} onClose={onClose} closeOnMaskClick={true}>
       {error ? (
         <div className="mat-empty">预览失败：{error}</div>
       ) : url ? (

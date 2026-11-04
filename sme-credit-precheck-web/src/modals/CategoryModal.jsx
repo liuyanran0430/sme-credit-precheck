@@ -4,6 +4,7 @@ import PreviewModal from './PreviewModal'
 import { useApp } from '../context/AppContext'
 import { updateMaterialCategory } from '../api/applications'
 import { MATERIAL_CATEGORIES } from '../constants'
+import { logger } from '../utils/logger'
 
 // 按文件扩展名区分图片与文档
 function isImage(name) {
@@ -58,7 +59,7 @@ export default function CategoryModal({ appId, materials, onClose, onSaved }) {
         await updateMaterialCategory(appId, id, category)
         okCount += 1
       } catch (err) {
-        console.error(err)
+        logger.error('更新材料分类失败', err, { appId, materialId: id, category })
         failed = true
       }
     }

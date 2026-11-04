@@ -6,7 +6,8 @@ from sqlalchemy import Enum
 class ApplicationStatus(str, enum.Enum):
     """授信申请状态。"""
 
-    CHECK = "check"  # 待材料检查
+    CHECK = "check"  # 待材料检查（上传 + OCR + AI 分类）
+    PRECHECK = "precheck"  # 待 AI 预审（材料就绪，等待用户手动触发）
     SUPPLEMENT = "supplement"  # 待补件
     MANUAL = "manual"  # 待人工核验
     RISK = "risk"  # 待风控复核

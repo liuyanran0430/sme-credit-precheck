@@ -47,6 +47,7 @@ class StubClient(LLMClient):
         prompt: str,
         schema: type,
         system: str | None = None,
+        method: str = "function_calling",
     ) -> object:
         # 返回 schema 的零值实例（pydantic 用 model_construct，dataclass 无参构造）
         if hasattr(schema, "model_construct"):

@@ -10,6 +10,7 @@ import EditAppModal from '../modals/EditAppModal'
 
 const STAT_ITEMS = [
   { key: 'check', label: '待材料检查', color: '#0891b2' },
+  { key: 'precheck', label: '待 AI 预审', color: '#059669' },
   { key: 'supplement', label: '待补件', color: '#d97706' },
   { key: 'manual', label: '待人工核验', color: '#7c3aed' },
   { key: 'risk', label: '待风控复核', color: '#dc2626' }
@@ -85,9 +86,12 @@ export default function ListView() {
     }
   }
 
-  // 待处理 = 待材料检查 + 待补件 + 待人工核验（后端返回的全量状态计数）
+  // 待处理 = 待材料检查 + 待 AI 预审 + 待补件 + 待人工核验（后端返回的全量状态计数）
   const pendingCount =
-    (statusCounts.check || 0) + (statusCounts.supplement || 0) + (statusCounts.manual || 0)
+    (statusCounts.check || 0) +
+    (statusCounts.precheck || 0) +
+    (statusCounts.supplement || 0) +
+    (statusCounts.manual || 0)
 
   const mainActionOf = (a) => {
     if (a.status === 'supplement')
@@ -155,6 +159,7 @@ export default function ListView() {
         <select value={filters.status} onChange={(e) => setFilter('status', e.target.value)}>
           <option value="">当前状态：全部</option>
           <option value="check">待材料检查</option>
+          <option value="precheck">待 AI 预审</option>
           <option value="supplement">待补件</option>
           <option value="manual">待人工核验</option>
           <option value="risk">待风控复核</option>
