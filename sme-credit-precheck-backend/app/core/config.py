@@ -61,6 +61,7 @@ LLM_TIMEOUT_SECONDS = _env_int("LLM_TIMEOUT_SECONDS", 60)
 LLM_TEMPERATURE = float(_env("LLM_TEMPERATURE", "0.1"))
 LLM_MAX_RETRIES = _env_int("LLM_MAX_RETRIES", 2)
 LLM_RETRY_BASE_DELAY = float(_env("LLM_RETRY_BASE_DELAY", "1"))  # 指数退避首项（秒）：1 → 2 → 4（对齐 429 限流策略）
+LLM_PROMPT_VERSION = _env("LLM_PROMPT_VERSION", "v1")  # 当前 Prompt 版本，写入 LLM 结构化日志便于回溯
 
 # Embedding（默认用 LLM 同提供商的 text-embedding API；设为空字符串表示不启用）
 EMBEDDING_MODEL = _env("EMBEDDING_MODEL", "")

@@ -1,17 +1,19 @@
 /**
- * 前端日志工具：分级输出 + 自动携带 trace_id + 生产环境控制。
+ * 前端日志工具：分级输出 + 生产环境控制。
  *
  * 使用方式：
  *   import { logger } from '@/utils/logger'
  *   logger.info('用户登录', { username })
  *   logger.error('加载申请失败', error, { appNo })
+ *   logger.error('AI 预审失败', error, { appNo, request_id })
+ *
+ * 调用 LLM 相关接口的日志在 extra 中传入 request_id 后，
+ * 输出行与上报内容都会带上 request_id，可与后端日志、llm_runs 对齐。
  *
  * 日志级别：debug < info < warn < error
  * - 开发环境：全部输出
  * - 生产环境：只输出 warn 及以上（debug/info 静默）
  */
-
-import { getTraceId } from '../api/http'
 
 const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 }
 
@@ -31,9 +33,11 @@ function getMinLevel() {
 }
 
 function format(level, message, extra) {
-  const traceId = getTraceId()
+  const requestId = extra && typeof extra === 'object' ? extra.request_id : undefined
   const ts = new Date().toISOString()
-  const parts = [`[${ts}]`, level.toUpperCase(), `trace=${traceId}`, message]
+  const parts = [`[${ts}]`, level.toUpperCase()]
+  if (requestId) parts.push(`request_id=${requestId}`)
+  parts.push(message)
   if (extra !== undefined) {
     try {
       parts.push(typeof extra === 'object' ? JSON.stringify(extra) : String(extra))
@@ -89,17 +93,27 @@ function scheduleFlush() {
 function enqueue(level, message, error, extra) {
   if (LEVELS[level] < LEVELS.warn) return
 
+  const requestId = extra && typeof extra === 'object' ? extra.request_id : undefined
   const entry = {
     timestamp: new Date().toISOString(),
     level,
     message,
-    trace_id: getTraceId() || null,
+    request_id: requestId || null,
     extra: {},
   }
 
   const errInfo = serializeError(error)
   if (errInfo) entry.extra.error = errInfo
-  if (extra !== undefined) entry.extra.context = extra
+  if (extra !== undefined) {
+    if (requestId) {
+      // request_id 已提升为独立字段，context 中不再重复
+      const rest = { ...extra }
+      delete rest.request_id
+      if (Object.keys(rest).length) entry.extra.context = rest
+    } else {
+      entry.extra.context = extra
+    }
+  }
 
   if (!Object.keys(entry.extra).length) entry.extra = null
 

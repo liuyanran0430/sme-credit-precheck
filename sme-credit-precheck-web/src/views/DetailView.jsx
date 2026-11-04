@@ -135,8 +135,11 @@ export default function DetailView() {
     if (!app?.canPrecheck || preChecking || processing) return
     setPreChecking(true)
     toast('正在执行 AI 预审，请稍候…')
+    let requestId = null
     try {
-      const { request_id: requestId } = await generateReport(app.id)
+      const res = await generateReport(app.id)
+      requestId = res.request_id
+      logger.info('AI 预审任务已提交', { appNo: app.id, request_id: requestId })
       let task = null
       // 最长轮询 5 分钟（300 次 × 1s）
       for (let i = 0; i < 300; i += 1) {
@@ -151,9 +154,10 @@ export default function DetailView() {
       setProc(app.id, null)
       refreshApp()
       refreshReport()
+      logger.info('AI 预审任务完成', { appNo: app.id, request_id: requestId })
       toast('AI 预审完成')
     } catch (error) {
-      logger.error('AI 预审失败', error, { appNo: app.id })
+      logger.error('AI 预审失败', error, { appNo: app.id, request_id: requestId })
       toast(`AI 预审失败：${error.message || '请稍后重试'}`)
     } finally {
       setPreChecking(false)

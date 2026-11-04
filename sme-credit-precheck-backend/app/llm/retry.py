@@ -237,6 +237,30 @@ def _is_retryable(exc: BaseException) -> bool:
     return False
 
 
+def classify_error_type(exc: BaseException) -> str:
+    """把异常归类为结构化日志里的 error_type，便于判断「是模型错还是工具错」。
+
+    返回值：timeout / rate_limit / context_overflow / json_parse / auth / network / unknown
+    """
+    if isinstance(exc, LLMContextError) or _is_context_overflow(exc):
+        return "context_overflow"
+    if isinstance(exc, LLMJSONParseError) or _is_json_parse_error(exc):
+        return "json_parse"
+    if isinstance(exc, LLMTimingError) or _is_timeout(exc):
+        return "timeout"
+    if _is_rate_limited(exc):
+        return "rate_limit"
+
+    status = getattr(exc, "status_code", None)
+    if status in (401, 403):
+        return "auth"
+
+    if _is_retryable(exc):
+        return "network"
+
+    return "unknown"
+
+
 # ------------------------------------------------------------------
 # 重试装饰器
 # ------------------------------------------------------------------

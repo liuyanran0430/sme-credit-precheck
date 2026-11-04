@@ -58,10 +58,13 @@ export default function UploadModal({ appId, onClose, onUploaded }) {
     }
 
     setSubmitting(true)
+    let requestId = null
     try {
       // 异步任务：接口立即返回 request_id，OCR/分类在后台执行，
       // 进度由详情页 checking 轮询（fetchMaterials + fetchApplication）驱动
-      await uploadMaterials(appId, files.map((f) => f.file))
+      const res = await uploadMaterials(appId, files.map((f) => f.file))
+      requestId = res.request_id
+      logger.info('材料上传任务已提交', { appId, request_id: requestId })
       setProcessing(appId, 'checking')
 
       toast(`已提交 ${files.length} 份资料，正在后台进行 OCR 抽取与智能分类…`)
@@ -69,7 +72,7 @@ export default function UploadModal({ appId, onClose, onUploaded }) {
       onUploaded?.()
       onClose()
     } catch (error) {
-      logger.error('材料上传失败', error, { appId, fileCount: files.length })
+      logger.error('材料上传失败', error, { appId, fileCount: files.length, request_id: requestId })
       setSubmitting(false)
       toast(error.message || '材料上传失败，请稍后重试')
     }

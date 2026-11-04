@@ -108,6 +108,9 @@ export default function NewAppModal({ onClose }) {
       // 异步任务：接口立即返回 request_id，OCR + AI 分类在后端后台线程执行，
       // 详情页通过轮询 materials 接口逐步显示进度（X/Y 与分类逐类出现）
       const uploadPromise = uploadMaterials(newId, files.map((f) => f.file))
+        .then((res) => {
+          logger.info('材料上传任务已提交', { appNo: newId, request_id: res.request_id })
+        })
         .catch((error) => {
           logger.error('材料上传失败', error, { appNo: newId })
           toast(`申请 ${newId} 已创建，材料处理失败：${error.message || '请稍后重试'}`)

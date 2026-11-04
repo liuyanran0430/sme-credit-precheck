@@ -81,18 +81,13 @@ LogContext = LogContext()  # type: ignore[assignment]
 # --------------------------- 格式化 ---------------------------
 
 class ContextFormatter(logging.Formatter):
-    """把 LogContext 中的 app_no / user 等自动拼到日志行里。"""
+    """把 LogContext 中的 request_id / app_no / user 等自动拼到日志行里。"""
 
     _SKIP_KEYS = {"thread", "name", "threadName", "msecs", "process", "processName"}
 
     def format(self, record: logging.LogRecord) -> str:
         extras = LogContext.get()
-        # trace_id 单独提取到 record，放在日志行最前面方便 grep
-        trace_id = extras.get("trace_id", "-")
-        record.trace_id = trace_id  # type: ignore[attr-defined]
-        # ctx 部分去掉 trace_id（避免重复），保留 app_no / user 等业务字段
-        ctx_extras = {k: v for k, v in extras.items() if k != "trace_id"}
-        ctx_parts = [f"{k}={v}" for k, v in ctx_extras.items() if k not in self._SKIP_KEYS]
+        ctx_parts = [f"{k}={v}" for k, v in extras.items() if k not in self._SKIP_KEYS]
         ctx_str = " ".join(ctx_parts) if ctx_parts else "-"
         record._ctx = ctx_str  # type: ignore[attr-defined]
         return super().format(record)
@@ -101,17 +96,18 @@ class ContextFormatter(logging.Formatter):
 # --------------------------- 按天滚动文件 Handler ---------------------------
 
 class DailyRotatingFileHandler(logging.handlers.BaseRotatingHandler):
-    """午夜自动切新文件，文件名 `app-YYYY-MM-DD.log`。"""
+    """午夜自动切新文件，默认文件名 `app-YYYY-MM-DD.log`，可用 prefix 指定前缀。"""
 
-    def __init__(self, directory: Path, level: int = logging.INFO) -> None:
+    def __init__(self, directory: Path, level: int = logging.INFO, prefix: str = "app") -> None:
         self._directory = directory
+        self._prefix = prefix
         self._current_date: date | None = None
         filename = self._filename_for(date.today())
         super().__init__(filename, mode="a", encoding="utf-8")
         self.setLevel(level)
 
     def _filename_for(self, d: date) -> str:
-        return str(self._directory / f"app-{d.isoformat()}.log")
+        return str(self._directory / f"{self._prefix}-{d.isoformat()}.log")
 
     def shouldRollover(self, record: logging.LogRecord) -> bool:  # noqa: N802
         if self._current_date is None:
@@ -132,7 +128,7 @@ class DailyRotatingFileHandler(logging.handlers.BaseRotatingHandler):
         import time
 
         now = time.time()
-        for f in self._directory.glob("app-*.log"):
+        for f in self._directory.glob(f"{self._prefix}-*.log"):
             try:
                 if (now - f.stat().st_mtime) / 86400 > keep_days:
                     f.unlink(missing_ok=True)
@@ -141,6 +137,9 @@ class DailyRotatingFileHandler(logging.handlers.BaseRotatingHandler):
 
 
 # --------------------------- 初始化 ---------------------------
+
+# LLM 调用结构化日志专用 logger：纯 JSON 行，独立落 llm-YYYY-MM-DD.log
+LLM_AUDIT_LOGGER_NAME = "llm.audit"
 
 _initialized = False
 
@@ -156,7 +155,7 @@ def setup_logging(debug: bool = False) -> None:
     root.setLevel(level)
 
     fmt = ContextFormatter(
-        fmt="%(asctime)s %(levelname)-7s [%(name)s:%(lineno)d] trace=%(trace_id)s ctx=%(_ctx)s %(message)s",
+        fmt="%(asctime)s %(levelname)-7s [%(name)s:%(lineno)d] ctx=%(_ctx)s %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
@@ -174,6 +173,21 @@ def setup_logging(debug: bool = False) -> None:
     except OSError as exc:
         # 日志目录写不了时降级为只控制台
         root.warning("日志文件无法打开(%s)，仅输出到控制台", exc)
+
+    # LLM 结构化日志：独立 logger + 独立文件，不与业务日志混行
+    llm_logger = logging.getLogger(LLM_AUDIT_LOGGER_NAME)
+    llm_logger.setLevel(logging.INFO)
+    llm_logger.propagate = False
+    llm_fmt = logging.Formatter("%(message)s")
+    try:
+        llm_handler = DailyRotatingFileHandler(_LOGS_DIR, level=logging.INFO, prefix="llm")
+        llm_handler.setFormatter(llm_fmt)
+        llm_logger.addHandler(llm_handler)
+    except OSError as exc:
+        root.warning("LLM 日志文件无法打开(%s)，LLM 结构化日志仅输出到控制台", exc)
+        llm_console = logging.StreamHandler()
+        llm_console.setFormatter(llm_fmt)
+        llm_logger.addHandler(llm_console)
 
     # 压噪第三方库
     for lib in ("uvicorn.access", "httpx", "uvicorn.error"):

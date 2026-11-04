@@ -1,6 +1,7 @@
 """前端日志上报接口：接收前端 logger 上报的日志，写入 frontend-YYYY-MM-DD.log。
 
-前端通过 logger.js 批量上报 warn/error 级别日志，便于和后端日志按 trace_id 串联排查。
+前端通过 logger.js 批量上报 warn/error 级别日志；
+调用 LLM 相关接口的日志会额外携带 request_id，便于和后端日志按 request_id 串联排查。
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ class FrontendLogEntry(BaseModel):
     timestamp: str = Field(..., description="ISO 时间戳")
     level: str = Field(..., description="日志级别 debug/info/warn/error")
     message: str = Field(..., description="日志消息")
-    trace_id: str | None = Field(default=None, description="链路追踪 ID")
+    request_id: str | None = Field(default=None, description="LLM 相关接口返回的 request_id")
     extra: dict[str, Any] | None = Field(default=None, description="附加上下文")
 
 
@@ -49,10 +50,10 @@ def receive_frontend_logs(batch: FrontendLogBatch) -> None:
     path = _frontend_log_path()
     lines: list[str] = []
     for entry in batch.entries:
-        # 格式对齐后端日志：时间 级别 trace=xxx 消息 {extra}
+        # 格式对齐后端日志：时间 级别 request_id=xxx 消息 {extra}
         parts = [entry.timestamp, entry.level.upper().ljust(7)]
-        if entry.trace_id:
-            parts.append(f"trace={entry.trace_id}")
+        if entry.request_id:
+            parts.append(f"request_id={entry.request_id}")
         parts.append(entry.message)
         if entry.extra:
             try:

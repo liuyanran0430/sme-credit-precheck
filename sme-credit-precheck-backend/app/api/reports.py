@@ -7,9 +7,10 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_application_or_404, get_db
+from app.api.deps import get_application_or_404, get_current_user, get_db
 from app.core.logging import LogContext
 from app.models.application import Application
+from app.models.user import User
 from app.repositories import ReportRepository
 from app.schemas.report import AiReportGenerateRequest, AiReportRead
 from app.schemas.task import TaskSubmitResponse
@@ -80,11 +81,14 @@ def export_report(
 )
 def generate_report(
     app: Application = Depends(get_application_or_404),
+    user: User = Depends(get_current_user),
     payload: AiReportGenerateRequest | None = None,
 ) -> TaskSubmitResponse:
-    request_id = task_runner.submit(
-        app.app_no,
-        task_runner.TASK_TYPE_REPORT_GENERATE,
-        lambda db: generate_report_for_app(db, app.id),
-    )
+    # user_id 写入日志上下文，后台线程继承后 LLM 结构化日志可定位到操作人
+    with LogContext(app_no=app.app_no, user_id=user.id, user=user.username):
+        request_id = task_runner.submit(
+            app.app_no,
+            task_runner.TASK_TYPE_REPORT_GENERATE,
+            lambda db: generate_report_for_app(db, app.id),
+        )
     return TaskSubmitResponse(request_id=request_id, app_no=app.app_no)

@@ -5,7 +5,7 @@
   任务进度细节落库在 materials/applications 表，这里只承载任务生命周期。
 - 同一 app_no + task_type 已有 running 任务时直接返回现有 request_id，防止重复提交。
 - 后台线程内新建 SessionLocal，不跨线程复用请求级 session。
-- 通过 contextvars.copy_context() 继承提交线程的日志上下文（trace_id 等）。
+- 通过 contextvars.copy_context() 继承提交线程的日志上下文（app_no / user_id 等）。
 - 任务结束（done/failed）后保留 TTL 供前端轮询，超时惰性清理。
 """
 
@@ -79,7 +79,7 @@ def submit(
             "finished_at": 0.0,
         }
 
-    # 继承提交线程的日志上下文（trace_id / app_no 等 ContextVar），
+    # 继承提交线程的日志上下文（app_no / user_id 等 ContextVar），
     # 并在其中注入本次任务的 request_id —— llm_runs 与日志都据此关联，
     # 该值即接口返回给前端的 request_id。
     ctx = contextvars.copy_context()

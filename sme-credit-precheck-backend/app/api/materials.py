@@ -9,11 +9,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFil
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_application_or_404, get_db
+from app.api.deps import get_application_or_404, get_current_user, get_db
 from app.core import config
 from app.core.logging import LogContext
 from app.models.application import Application
 from app.models.enums import ApplicationStatus, MaterialStatus
+from app.models.user import User
 from app.repositories import MaterialRepository
 from app.schemas.ai_classification import (
     MaterialClassifyInput,
@@ -95,6 +96,7 @@ def preview_material(
 )
 def upload_materials(
     app: Application = Depends(get_application_or_404),
+    user: User = Depends(get_current_user),
     files: list[UploadFile] = File(..., description="待上传的材料文件"),
 ) -> TaskSubmitResponse:
     # 注意：本接口必须是同步 def（FastAPI 会放入线程池执行），不能改成 async def。
@@ -118,11 +120,13 @@ def upload_materials(
             )
         pending.append((filename, content))
 
-    request_id = task_runner.submit(
-        app.app_no,
-        task_runner.TASK_TYPE_MATERIALS_UPLOAD,
-        lambda db: ingest_materials(db, app.id, app.app_no, pending),
-    )
+    # user_id 写入日志上下文，后台线程继承后 LLM 结构化日志可定位到操作人
+    with LogContext(app_no=app.app_no, user_id=user.id, user=user.username):
+        request_id = task_runner.submit(
+            app.app_no,
+            task_runner.TASK_TYPE_MATERIALS_UPLOAD,
+            lambda db: ingest_materials(db, app.id, app.app_no, pending),
+        )
     return TaskSubmitResponse(request_id=request_id, app_no=app.app_no)
 
 
