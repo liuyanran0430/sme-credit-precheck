@@ -1,4 +1,4 @@
-﻿from decimal import Decimal
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import ForeignKey, JSON, Numeric, String, Text
@@ -25,6 +25,9 @@ class AiReport(Base, TimestampMixin):
     )
     conclusion: Mapped[AiConclusion] = mapped_column(enum_column(AiConclusion))
     summary: Mapped[str | None] = mapped_column(Text, nullable=True, comment="预审结论摘要")
+    interpretation_text: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="AI 解读文本（LLM 转述预审快照，随报告重新生成而覆盖）"
+    )
     pass_rate: Mapped[Decimal | None] = mapped_column(
         Numeric(5, 2), nullable=True, comment="预估通过率（%）"
     )

@@ -71,6 +71,7 @@ class ReportRepository:
         conflicts: list[dict],
         rule_version: str | None,
         rule_snapshot: dict | None,
+        interpretation_text: str | None = None,
         version: str = "v1",
         commit: bool = True,
     ) -> AiReport:
@@ -97,6 +98,7 @@ class ReportRepository:
         report.conflicts = conflicts
         report.rule_version = rule_version
         report.rule_snapshot = rule_snapshot
+        report.interpretation_text = interpretation_text
 
         if commit:
             self.db.commit()

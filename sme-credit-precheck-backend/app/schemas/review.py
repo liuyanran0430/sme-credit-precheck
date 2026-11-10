@@ -37,6 +37,17 @@ class ManualReviewRead(ORMModel):
     comment: str | None
 
 
+class RiskReviewItem(BaseModel):
+    """单条风险信号复核结果。"""
+
+    signal_id: str = Field(..., max_length=50, description="风险信号编号")
+    title: str = Field(..., max_length=200, description="风险信号标题（快照）")
+    action: Literal["confirm", "exclude"] = Field(
+        ..., description="复核结论：确认风险 / 误报排除"
+    )
+    comment: str | None = Field(None, max_length=500, description="复核备注")
+
+
 class RiskDecisionCreate(BaseModel):
     """提交风控复核决策请求体。"""
 
@@ -44,6 +55,9 @@ class RiskDecisionCreate(BaseModel):
         ..., description="风控决策结论：通过 / 退回补件 / 拒绝"
     )
     opinion: str = Field(..., max_length=2000, description="风控复核意见（必填）")
+    items: list[RiskReviewItem] | None = Field(
+        None, description="逐项风险信号复核结果（存在风险信号时必填）"
+    )
 
 
 class RiskReviewRead(ORMModel):
@@ -52,4 +66,5 @@ class RiskReviewRead(ORMModel):
     reviewer: str
     decision: ReviewDecision
     opinion: str
+    checklist_result: list[dict[str, Any]] | None
     mitigation: str | None

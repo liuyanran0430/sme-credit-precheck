@@ -1,0 +1,48 @@
+# ============================================================
+# 评分配置 —— 四款产品共用的评分模型参数
+# 版本：v2026-10-28
+# 说明：最终得分 = 基础分 + Σ(弱规则 PASS 得分)，满分 100
+# ============================================================
+
+version: v2026-10-28
+updated_at: 2026-10-28
+
+# 各产品评分参数
+products:
+  AP:  # 普惠小微经营贷
+    base_score: 2
+    soft_rule_score: 14
+    soft_rule_count: 7
+    full_score: 100  # 2 + 7×14
+
+  AK:  # 小微快贷
+    base_score: 4
+    soft_rule_score: 16
+    soft_rule_count: 6
+    full_score: 100  # 4 + 6×16
+
+  AJ:  # 经营性抵押贷
+    base_score: 4
+    soft_rule_score: 16
+    soft_rule_count: 6
+    full_score: 100  # 4 + 6×16
+
+  AE:  # 科技e贷
+    base_score: 2
+    soft_rule_score: 14
+    soft_rule_count: 7
+    full_score: 100  # 2 + 7×14
+
+# 等级阈值（四款产品共用）
+level_thresholds:
+  A: [90, 100]    # 优秀 → 可自动审批
+  B: [75, 89]     # 良好 → 建议优先审批
+  C: [60, 74]     # 一般 → 需人工复核后审批
+  D: [0, 59]      # 较差 → 谨慎受理或建议降额
+
+# 特殊情况处理
+special_cases:
+  hard_rule_fail: "不打分，直接拒绝"
+  soft_rule_uncertain: "该条规则得 0 分（视同 FAIL）"
+  completeness_issue: "不打分，转人工补件"
+  consistency_high_fail: "结论降级为关注，不影响得分计算"

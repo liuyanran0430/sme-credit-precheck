@@ -23,6 +23,16 @@ from .base import Document, QueryResult, VectorStore
 from .memory_store import InMemoryStore
 from .chroma_store import ChromaStore
 from .factory import get_vector_store
+from .kb_retriever import (
+    KB_CASES,
+    KB_MATERIAL_REVIEW,
+    KB_POLICY,
+    KB_RULE_CONFIG,
+    KnowledgeHit,
+    retrieve_material_hints,
+    retrieve_rule_basis,
+    search,
+)
 
 __all__ = [
     "Document",
@@ -31,4 +41,12 @@ __all__ = [
     "InMemoryStore",
     "ChromaStore",
     "get_vector_store",
+    "KB_POLICY",
+    "KB_MATERIAL_REVIEW",
+    "KB_RULE_CONFIG",
+    "KB_CASES",
+    "KnowledgeHit",
+    "search",
+    "retrieve_rule_basis",
+    "retrieve_material_hints",
 ]

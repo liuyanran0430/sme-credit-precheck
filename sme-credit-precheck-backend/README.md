@@ -128,12 +128,8 @@ sme-credit-precheck-backend/
 │   ├── env.py
 │   ├── script.py.mako
 │   └── versions/                   # 迁移版本文件（空目录有 .gitkeep）
-├── rules/                          # 产品准入规则 YAML
-│   ├── rule_普惠小微经营贷.yaml
-│   ├── rule_小微快贷.yaml
-│   ├── rule_科技e贷.yaml
-│   ├── rule_经营性抵押贷.yaml
-│   └── README_规则说明.yaml
+├── rules/                          # 【已废弃】原运行时规则目录，规则现从 knowledge_base/03_规则配置/准入规则/ 读取
+│   ├── README_规则说明.yaml
 ├── scripts/
 │   ├── create_user.py              # 批量创建测试账号
 │   └── export_openapi.py           # 导出 openapi.json

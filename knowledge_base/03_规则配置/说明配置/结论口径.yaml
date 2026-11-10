@@ -1,0 +1,72 @@
+# ============================================================
+# 结论口径配置 —— AI 预审四类结论的判定逻辑
+# 版本：v2026-10-28
+# 说明：按优先级从高到低判定，命中即返回
+# ============================================================
+
+version: v2026-10-28
+updated_at: 2026-10-28
+
+# 结论类型
+conclusions:
+  - code: reject
+    label: 拒绝
+    priority: 1
+    description: 不满足硬性准入条件
+
+  - code: manual
+    label: 转人工
+    priority: 2
+    description: 材料缺失或不可读，需补件
+
+  - code: attention
+    label: 关注
+    priority: 3
+    description: 存在高风险项，需人工重点核验
+
+  - code: pass
+    label: 通过
+    priority: 4
+    description: 满足准入条件，按得分分等级
+
+# 判定逻辑（按优先级顺序）
+logic:
+  - conclusion: reject
+    condition: "任一条强规则（hard）FAIL"
+    detail: "强规则是硬性准入门槛，不满足直接拒绝，不进入打分环节"
+
+  - conclusion: manual
+    condition: "材料完整性问题"
+    detail: "缺少必备材料、内容不可读（OCR 文本为空）、银行流水期间无法识别"
+
+  - conclusion: attention
+    condition: "满足任一：一致性 HIGH 级别 FAIL；≥ 3 条弱规则 FAIL"
+    detail: "高风险项需人工重点核验"
+
+  - conclusion: pass
+    condition: "以上均不满足"
+    detail: "按评分体系得分划分 A/B/C/D 等级"
+
+# 结论流转与申请状态
+status_transition:
+  reject:
+    app_status: null
+    action: "申请直接否决，终态"
+  manual:
+    app_status: supplement
+    action: "客户经理补充材料后重新预审"
+  attention:
+    app_status: manual
+    action: "人工复核环节重点核验风险项"
+  pass:
+    app_status: manual
+    action: "进入人工复核流程"
+
+# 补件来源区分
+supplement_source:
+  manual:
+    label: 人工复核退回
+    after_supplement: manual  # 回流至待人工核验队列
+  risk:
+    label: 风控退回
+    after_supplement: risk    # 直接回流至待风控复核队列

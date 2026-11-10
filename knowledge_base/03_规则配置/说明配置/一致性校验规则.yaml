@@ -1,0 +1,103 @@
+# ============================================================
+# 一致性校验规则配置 —— P1 核心校验项
+# 版本：v2026-10-28
+# 说明：三态判定 pass/fail/uncertain，仅 high 级 FAIL 影响整体一致性
+# ============================================================
+
+version: v2026-10-28
+updated_at: 2026-10-28
+
+# 三态判定
+status:
+  pass: "各来源取值一致"
+  fail: "各来源取值不一致"
+  uncertain: "关键字段缺失，无法比对，转人工核验"
+
+# 严重度
+severity:
+  high: "FAIL 时结论降级为关注"
+  medium: "FAIL 时记录问题，不直接降级"
+  low: "FAIL 时记录问题，不直接降级"
+
+# 整体一致性判定
+# is_consistent = NOT EXISTS (status == fail AND severity == high)
+overall_logic: "存在任一 high 级 FAIL → 整体不通过；仅 medium/low 级 FAIL → 整体通过"
+
+# P1 核心校验项
+checks:
+  - check_id: C1
+    check_item: 企业名称一致性
+    severity: high
+    sources: [application, business_license, bank_statement, financial_report, tax_return, credit_auth]
+    field: 企业名称
+    logic: "各来源企业名称归一化（去空白与标点）后必须唯一"
+    fail_suggestion: "各来源企业全称不一致，请以营业执照为准核实"
+    uncertain_condition: "可比对的来源 < 2 个"
+
+  - check_id: C2
+    check_item: 统一社会信用代码一致性
+    severity: high
+    sources: [application, business_license, credit_auth, tax_return]
+    field: 统一社会信用代码
+    logic: "各来源 18 位信用代码必须一致"
+    fail_suggestion: "各来源统一社会信用代码不一致，请核实原件"
+    uncertain_condition: "可比对的来源 < 2 个"
+    note: "纳税人识别号仅在 18 位格式时参与比对"
+
+  - check_id: C5
+    check_item: 银行流水期间连续性
+    severity: medium
+    sources: [bank_statement]
+    field: 统计期间
+    logic: "多份流水交易期间必须连续覆盖，无断月"
+    fail_suggestion: "流水期间不连续，需补充缺失月份流水"
+    uncertain_condition: "无银行流水或期间无法识别"
+
+  - check_id: C6
+    check_item: 财务报表年度与纳税申报所属年度一致性
+    severity: medium
+    sources: [financial_report, tax_return]
+    field: 报表所属年度
+    logic: "财务报表年度必须与纳税申报所属年度一致"
+    fail_suggestion: "财务报表年度与纳税申报所属年度不一致"
+    uncertain_condition: "财务报表或纳税申报表年度缺失"
+
+  - check_id: C7
+    check_item: 征信授权时效
+    severity: high
+    sources: [credit_auth, application]
+    field: 签署日期
+    logic: "签署日期至申请提交日 ≤ 6 个月，且授权有效期未过"
+    fail_suggestion: "授权书签署超过 6 个月或授权期限已过，需重新签署"
+    uncertain_condition: "无征信授权书或签署日期缺失"
+
+  - check_id: C9
+    check_item: 材料日期时效
+    severity: high
+    sources: [bank_statement, financial_report, tax_return, credit_auth]
+    field: 材料所属日期
+    logic: "材料日期不得晚于申请提交日期 + 1 天"
+    fail_suggestion: "材料日期晚于申请提交日期，请核实材料真实性"
+    uncertain_condition: "无材料日期可识别"
+
+  - check_id: C14
+    check_item: 银行流水勾稽平衡
+    severity: high
+    sources: [bank_statement]
+    field: 期初/收入/支出/期末
+    logic: "期初余额 + 本月收入 - 本月支出 = 期末余额（容差 1 元）"
+    fail_suggestion: "流水借贷与余额不平，需核实原始对账单"
+    uncertain_condition: "期初/收入/支出/期末任一缺失"
+
+  - check_id: C15
+    check_item: 资产负债表恒等式
+    severity: high
+    sources: [financial_report]
+    field: 资产 = 负债 + 所有者权益
+    logic: "资产总计 = 负债合计 + 所有者权益合计（容差 1 元）"
+    fail_suggestion: "资产与负债+所有者权益差额过大，报表不平"
+    uncertain_condition: "资产/负债/所有者权益任一缺失"
+
+# 容差配置
+tolerance:
+  amount: 1.0  # 金额勾稽容差（元）

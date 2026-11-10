@@ -99,6 +99,39 @@ class ApplicationRepository:
             ).all()
         )
 
+    def list_by_manager(
+        self,
+        manager_name: str,
+        *,
+        status_filter: ApplicationStatus | None = None,
+        keyword: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[Application], int]:
+        """按客户经理姓名分页查询本人名下申请，返回 (行, 总数)。
+
+        供授信助手等只读聚合场景使用，数据范围强制限定为 manager_name。
+        """
+        stmt = select(Application).where(Application.manager_name == manager_name)
+        if status_filter is not None:
+            stmt = stmt.where(Application.status == status_filter)
+        if keyword:
+            like = f"%{keyword.strip()}%"
+            stmt = stmt.where(
+                or_(
+                    Application.app_no.ilike(like),
+                    Application.company_name.ilike(like),
+                )
+            )
+
+        total = self.db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        rows = self.db.scalars(
+            stmt.order_by(Application.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+        return list(rows), total
+
     def next_app_no(self, prefix: str) -> str:
         """按编号前缀生成同类型申请的下一个编号。"""
         latest_no = self.db.scalar(

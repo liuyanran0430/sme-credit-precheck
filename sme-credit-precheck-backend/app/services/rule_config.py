@@ -1,8 +1,8 @@
 """准入规则文件读取。
 
-规则文件位于项目根目录 `rules/` 下，每个产品一个 YAML（rule_<产品>.yaml），
-通过文件内的 `product` 字段与申请产品匹配。本模块只负责读取与解析，
-规则判定逻辑由 rule_engine / analyzer 使用。
+规则文件直接读取项目根目录 `knowledge_base/03_规则配置/准入规则/` 下的
+YAML（rule_<产品>.yaml），通过文件内的 `product` 字段与申请产品匹配。
+本模块只负责读取与解析，规则判定逻辑由 rule_engine / analyzer 使用。
 """
 
 import logging
@@ -14,8 +14,13 @@ from app.schemas.ai_classification import MaterialCategory
 
 logger = logging.getLogger(__name__)
 
-# 项目根目录下的规则目录
-RULES_DIR = Path(__file__).resolve().parents[2] / "rules"
+# 知识库规则源目录（项目根目录下 knowledge_base/03_规则配置/准入规则）
+RULES_DIR = (
+    Path(__file__).resolve().parents[3]
+    / "knowledge_base"
+    / "03_规则配置"
+    / "准入规则"
+)
 
 # 路径 + 修改时间 → 已解析配置，避免每次预审重复读取文件
 _CONFIG_CACHE: dict[tuple[str, float], dict] = {}
@@ -50,6 +55,23 @@ def load_rule_config(product: str) -> dict | None:
             return config
     logger.warning("未找到产品「%s」对应的规则文件", product)
     return None
+
+
+def list_rule_configs() -> list[dict]:
+    """列出全部产品准入规则配置（按产品代码排序），供产品清单类查询使用。"""
+    if not RULES_DIR.exists():
+        logger.warning("规则目录不存在：%s", RULES_DIR)
+        return []
+    configs: list[dict] = []
+    for path in sorted(RULES_DIR.glob("rule_*.yaml")):
+        try:
+            config = _load_yaml(path)
+        except (OSError, yaml.YAMLError) as exc:
+            logger.warning("读取规则文件失败 %s：%s", path.name, exc)
+            continue
+        if config.get("product"):
+            configs.append(config)
+    return sorted(configs, key=lambda item: str(item.get("product_code") or ""))
 
 
 def extra_required_categories(product: str) -> list[tuple[MaterialCategory, int, str]]:

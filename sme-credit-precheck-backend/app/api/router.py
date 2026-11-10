@@ -1,7 +1,19 @@
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user, require_roles
-from app.api import applications, auth, frontend_logs, materials, reports, reviews, risk, tasks
+from app.api import (
+    applications,
+    assistant,
+    auth,
+    chat,
+    frontend_logs,
+    materials,
+    qa,
+    reports,
+    reviews,
+    risk,
+    tasks,
+)
 from app.models.enums import UserRole
 
 api_router = APIRouter()
@@ -50,4 +62,25 @@ api_router.include_router(
     prefix="/risk",
     tags=["风控复核"],
     dependencies=[Depends(require_roles(UserRole.RISK, UserRole.ADMIN))],
+)
+
+# 政策问答：两种角色都可访问，只读知识库
+api_router.include_router(
+    qa.router, prefix="/qa", tags=["政策问答"], dependencies=[Depends(get_current_user)]
+)
+
+# 授信助手：两种角色都可访问，只读本人名下业务数据
+api_router.include_router(
+    assistant.router,
+    prefix="/assistant",
+    tags=["授信助手"],
+    dependencies=[Depends(get_current_user)],
+)
+
+# 统一对话入口：按问题自动分流政策问答 / 授信助手
+api_router.include_router(
+    chat.router,
+    prefix="/chat",
+    tags=["智能问答"],
+    dependencies=[Depends(get_current_user)],
 )

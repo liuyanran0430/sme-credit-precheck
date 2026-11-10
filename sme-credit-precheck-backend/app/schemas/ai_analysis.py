@@ -159,6 +159,12 @@ class RuleMatchItem(BaseModel):
     result: RuleMatchStatus
     evidence: RuleEvidence | None = None
     detail: str | None = Field(None, description="判定说明")
+    basis: str | None = Field(
+        None, max_length=600, description="知识库政策依据原文（RAG 检索，仅用于解释，不参与判定）"
+    )
+    hint: str | None = Field(
+        None, max_length=600, description="字段缺失时的材料审核要点提示（RAG 兜底，不参与判定）"
+    )
 
 
 class RuleMatchResult(BaseModel):

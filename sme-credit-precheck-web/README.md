@@ -19,7 +19,7 @@
 
 | 分类 | 依赖 |
 |---|---|
-| 框架 | React 18 |
+| 框架 | React 18 + TypeScript（strict） |
 | 路由 | React Router DOM 6 |
 | 构建 | Vite 5 + @vitejs/plugin-react |
 | HTTP | fetch（自封装拦截器） |
@@ -30,42 +30,45 @@
 ```
 sme-credit-precheck-web/
 ├── index.html                      # Vite 入口 HTML
-├── vite.config.js                  # Vite 配置（代理 /api → http://127.0.0.1:8000）
+├── vite.config.ts                  # Vite 配置（代理 /api → http://127.0.0.1:8000）
+├── tsconfig.json                   # TypeScript 配置（strict / noEmit）
+├── playwright.config.ts            # Playwright 端到端测试配置
 ├── package.json
 ├── src/
-│   ├── main.jsx                    # React 挂载点 + Router + Context 注入
-│   ├── App.jsx                     # App 根组件（含 Sidebar + 路由布局）
+│   ├── main.tsx                    # React 挂载点 + Router + Context 注入
+│   ├── App.tsx                     # App 根组件（含 Sidebar + 路由布局）
+│   ├── types.ts                    # 全局共享 TypeScript 类型
 │   ├── api/                        # HTTP 请求层
-│   │   ├── http.js                 # fetch 封装 + 401 拦截 + Toast 全局提示
-│   │   ├── auth.js                 # 登录 / me
-│   │   └── applications.js         # 申请 / 材料 / 报告 / 复核 / 风控全部 endpoint
+│   │   ├── http.ts                 # fetch 封装 + 401 拦截 + Toast 全局提示
+│   │   ├── auth.ts                 # 登录 / me
+│   │   └── applications.ts         # 申请 / 材料 / 报告 / 复核 / 风控全部 endpoint
 │   ├── components/                 # 通用组件
-│   │   ├── Sidebar.jsx             # 左侧导航（登录 / 申请列表 / AI 预审报告 / 人工复核 / 风控复核）
-│   │   ├── Stepper.jsx             # 节点式进度条
-│   │   ├── Modal.jsx               # 通用模态框
-│   │   ├── ConfirmModal.jsx        # 带确认按钮的二次确认弹窗
-│   │   ├── Toast.jsx               # 轻量 Toast（定位全局错误提示）
-│   │   └── ReportSections.jsx      # AI 预审报告分节渲染组件
+│   │   ├── Sidebar.tsx             # 左侧导航（登录 / 申请列表 / AI 预审报告 / 人工复核 / 风控复核）
+│   │   ├── Stepper.tsx             # 节点式进度条
+│   │   ├── Modal.tsx               # 通用模态框
+│   │   ├── ConfirmModal.tsx        # 带确认按钮的二次确认弹窗
+│   │   ├── Toast.tsx               # 轻量 Toast（定位全局错误提示）
+│   │   └── ReportSections.tsx      # AI 预审报告分节渲染组件
 │   ├── modals/                     # 业务弹窗
-│   │   ├── NewAppModal.jsx         # 新建申请
-│   │   ├── EditAppModal.jsx        # 编辑申请
-│   │   ├── UploadModal.jsx         # 材料多文件上传
-│   │   ├── CategoryModal.jsx       # 查看 / 修改材料分类（左侧放大图标 + AI 依据悬停）
-│   │   ├── PreviewModal.jsx        # 材料文件内联预览
-│   │   ├── PackageModal.jsx        # 「查看预审报告和材料清单」双栏弹窗
-│   │   └── ProcessModal.jsx        # 风控复核决策 / 状态流转弹窗
+│   │   ├── NewAppModal.tsx         # 新建申请
+│   │   ├── EditAppModal.tsx        # 编辑申请
+│   │   ├── UploadModal.tsx         # 材料多文件上传
+│   │   ├── CategoryModal.tsx       # 查看 / 修改材料分类（左侧放大图标 + AI 依据悬停）
+│   │   ├── PreviewModal.tsx        # 材料文件内联预览
+│   │   ├── PackageModal.tsx        # 「查看预审报告和材料清单」双栏弹窗
+│   │   └── ProcessModal.tsx        # 风控复核决策 / 状态流转弹窗
 │   ├── views/                      # 路由页面
-│   │   ├── LoginView.jsx           # 登录页
-│   │   ├── ListView.jsx            # 申请列表（表格 + 筛选）
-│   │   ├── DetailView.jsx          # 申请详情（左侧进度条 + 中间主卡 + 右侧 AI 摘要）
-│   │   ├── ReportView.jsx          # AI 预审报告完整页
-│   │   ├── ReviewView.jsx          # 人工复核页（核验区 + 决策区两层结构）
-│   │   └── RiskView.jsx            # 风控复核队列页
+│   │   ├── LoginView.tsx           # 登录页
+│   │   ├── ListView.tsx            # 申请列表（表格 + 筛选）
+│   │   ├── DetailView.tsx          # 申请详情（左侧进度条 + 中间主卡 + 右侧 AI 摘要）
+│   │   ├── ReportView.tsx          # AI 预审报告完整页
+│   │   ├── ReviewView.tsx          # 人工复核页（核验区 + 决策区两层结构）
+│   │   └── RiskView.tsx            # 风控复核队列页
 │   ├── context/                    # React Context
-│   │   ├── AuthContext.jsx         # 登录态（token / user / login / logout）
-│   │   └── AppContext.jsx          # 全局加载 / Toast 调度
-│   ├── constants/index.js          # 状态标签颜色 / 操作按钮文案映射等常量
-│   ├── utils/index.js              # 工具函数（日期格式化 / 脱敏展示 / 枚举映射）
+│   │   ├── AuthContext.tsx         # 登录态（token / user / login / logout）
+│   │   └── AppContext.tsx          # 全局加载 / Toast 调度
+│   ├── constants/index.ts          # 状态标签颜色 / 操作按钮文案映射等常量
+│   ├── utils/index.ts              # 工具函数（日期格式化 / 脱敏展示 / 枚举映射）
 │   └── styles/                     # 全局样式
 │       ├── variables.css           # CSS 变量（主题色 / 间距 / 字号）
 │       ├── layout.css              # 布局（侧边栏 + 主内容）
@@ -129,7 +132,8 @@ npm run dev
 ### 构建生产包
 
 ```bat
-npm run build        # 产物输出到 dist/
+npm run typecheck    # tsc --noEmit 类型检查
+npm run build        # 类型检查 + 产物输出到 dist/
 npm run preview      # 本地预览构建产物（http://localhost:4173）
 ```
 
@@ -137,9 +141,9 @@ npm run preview      # 本地预览构建产物（http://localhost:4173）
 
 ### 后端地址变更怎么办？
 
-改 `vite.config.js`：
+改 `vite.config.ts`：
 
-```js
+```ts
 proxy: {
   '/api': {
     target: 'http://127.0.0.1:8000',   // ← 改这里
@@ -162,8 +166,8 @@ proxy: {
 
 | 特性 | 实现 |
 |---|---|
-| 错误处理 | 所有 HTTP 请求失败（非 2xx）通过 `http.js` 拦截器统一抛 Toast；401 自动跳登录 |
-| 状态标签 | `constants/index.js` 里维护，浅色底圆角胶囊（符合绿 / 不符合红 / 存疑琥珀） |
+| 错误处理 | 所有 HTTP 请求失败（非 2xx）通过 `http.ts` 拦截器统一抛 Toast；401 自动跳登录 |
+| 状态标签 | `constants/index.ts` 里维护，浅色底圆角胶囊（符合绿 / 不符合红 / 存疑琥珀） |
 | AI 摘要 | 申请详情页右侧面板；不重复调预审接口，直接拉已落库的 report snapshot |
 | 修改分类弹窗 | 左侧放大 44px 图标；右侧展示 AI 分类依据（截断 + hover tooltip）；分区把「其他」顶到最前 |
 | 双栏弹窗 | 预审报告和材料清单各一 Scroll 容器，内容不会被弹窗裁切 |
@@ -178,7 +182,7 @@ A: 切国内镜像：`npm config set registry https://registry.npmmirror.com`。
 A: 确认后端启动成功（`http://127.0.0.1:8000/docs` 能打开）。Vite 代理失败时浏览器 Network 面板 `/api/v1/auth/login` 会显示 502 / ECONNREFUSED。
 
 **Q: 端口被占用？**
-A: 改 `vite.config.js` 的 `server.port`，或者 `npm run dev -- --port 5174`。
+A: 改 `vite.config.ts` 的 `server.port`，或者 `npm run dev -- --port 5174`。
 
 **Q: 构建后直接打开 `dist/index.html` 白屏？**
 A: 浏览器 file:// 协议下 React Router 不生效。用 `npm run preview` 或挂到 Nginx 上。

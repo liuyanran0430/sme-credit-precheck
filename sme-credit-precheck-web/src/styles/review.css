@@ -200,6 +200,10 @@
   color: var(--slate-600);
 }
 
+.rc-desc:last-child {
+  margin-bottom: 14px;
+}
+
 .checks {
   margin: 10px 16px 0;
   background: var(--blue-bg);

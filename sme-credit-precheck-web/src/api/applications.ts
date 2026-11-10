@@ -1,0 +1,287 @@
+import { authHeaders, handleUnauthorized, readError } from './http'
+import type {
+  ApplicationListResult,
+  ApplicationRow,
+  CreateApplicationPayload,
+  FetchApplicationsParams,
+  ManualReviewPayload,
+  MaterialRow,
+  Report,
+  ReviewRecord,
+  RiskDecisionPayload,
+  TaskStatus,
+  TaskSubmitResponse,
+  UpdateApplicationPayload
+} from '../types'
+
+const API_PREFIX = '/api/v1'
+
+/** 统一请求封装：自动携带访问令牌，401 时清理登录态 */
+async function request(url: string, options: RequestInit = {}): Promise<Response> {
+  const response = await fetch(url, {
+    ...options,
+    headers: authHeaders(options.headers as Record<string, string> | undefined)
+  })
+  if (response.status === 401) {
+    handleUnauthorized()
+    throw new Error('登录已过期，请重新登录')
+  }
+  if (!response.ok) {
+    throw new Error(await readError(response))
+  }
+  return response
+}
+
+/**
+ * 获取申请列表，筛选（状态 / 贷款类型 / 关键字）与分页均由后端 SQL 完成。
+ * 返回 { items, total, statusCounts }，其中 statusCounts 为全量各状态数量，不受筛选影响。
+ */
+export async function fetchApplications({
+  page = 1,
+  pageSize = 100,
+  status = '',
+  product = '',
+  keyword = ''
+}: FetchApplicationsParams = {}): Promise<ApplicationListResult> {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  if (status) params.set('status', status)
+  if (product) params.set('product', product)
+  if (keyword) params.set('keyword', keyword)
+
+  const response = await request(`${API_PREFIX}/applications?${params.toString()}`)
+  const data = (await response.json()) as {
+    items?: ApplicationRow[]
+    total?: number
+    status_counts?: Record<string, number>
+  }
+  return {
+    items: Array.isArray(data.items) ? data.items : [],
+    total: Number(data.total) || 0,
+    statusCounts: data.status_counts || {}
+  }
+}
+
+/**
+ * 提交新申请，落库后返回完整申请记录。
+ */
+export async function createApplication(payload: CreateApplicationPayload): Promise<ApplicationRow> {
+  const response = await request(`${API_PREFIX}/applications`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  return (await response.json()) as ApplicationRow
+}
+
+/**
+ * 查询单个申请的最新详情（用于同步状态与进度）。
+ */
+export async function fetchApplication(appNo: string): Promise<ApplicationRow> {
+  const response = await request(`${API_PREFIX}/applications/${encodeURIComponent(appNo)}`, {
+    cache: 'no-store'
+  })
+  return (await response.json()) as ApplicationRow
+}
+
+/**
+ * 修改申请基础信息（企业名称、信用代码、贷款类型、申请金额）。
+ * 后端在字段发生变化时自动重新生成 AI 预审报告。
+ */
+export async function updateApplication(
+  appNo: string,
+  payload: UpdateApplicationPayload
+): Promise<ApplicationRow> {
+  const response = await request(`${API_PREFIX}/applications/${encodeURIComponent(appNo)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  return (await response.json()) as ApplicationRow
+}
+
+/**
+ * 查询申请材料清单。
+ */
+export async function fetchMaterials(appNo: string): Promise<MaterialRow[]> {
+  const response = await request(`${API_PREFIX}/applications/${encodeURIComponent(appNo)}/materials`, {
+    cache: 'no-store'
+  })
+  const data = (await response.json()) as MaterialRow[] | unknown
+  return Array.isArray(data) ? data : []
+}
+
+/**
+ * 查询最新 AI 预审报告，尚未生成时返回 null。
+ */
+export async function fetchReport(appNo: string): Promise<Report | null> {
+  const response = await fetch(`${API_PREFIX}/applications/${encodeURIComponent(appNo)}/report`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  })
+  if (response.status === 404) return null
+  if (response.status === 401) {
+    handleUnauthorized()
+    throw new Error('登录已过期，请重新登录')
+  }
+  if (!response.ok) throw new Error(await readError(response))
+  return (await response.json()) as Report
+}
+
+/**
+ * 查询某申请的人工复核记录（按提交时间倒序）。
+ */
+export async function fetchManualReviews(appNo: string): Promise<ReviewRecord[]> {
+  const response = await request(`${API_PREFIX}/applications/${encodeURIComponent(appNo)}/reviews`)
+  return (await response.json()) as ReviewRecord[]
+}
+
+/**
+ * 查询某申请的风控复核记录（按提交时间倒序）。
+ */
+export async function fetchRiskReviews(appNo: string): Promise<ReviewRecord[]> {
+  const response = await request(`${API_PREFIX}/risk/${encodeURIComponent(appNo)}/reviews`)
+  return (await response.json()) as ReviewRecord[]
+}
+
+/**
+ * 触发 AI 预审（异步任务），立即返回 { request_id, app_no }；
+ * 报告生成完成后通过 fetchReport 获取。
+ */
+export async function generateReport(appNo: string): Promise<TaskSubmitResponse> {
+  const response = await request(
+    `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/report/generate`,
+    { method: 'POST' }
+  )
+  return (await response.json()) as TaskSubmitResponse
+}
+
+/**
+ * 轮询后台任务状态：{ request_id, task_type, app_no, status: running|done|failed, error }。
+ * 任务不存在或已过期时返回 null。
+ */
+export async function fetchTaskStatus(requestId: string): Promise<TaskStatus | null> {
+  const response = await fetch(`${API_PREFIX}/tasks/${encodeURIComponent(requestId)}`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  })
+  if (response.status === 404) return null
+  if (response.status === 401) {
+    handleUnauthorized()
+    throw new Error('登录已过期，请重新登录')
+  }
+  if (!response.ok) throw new Error(await readError(response))
+  return (await response.json()) as TaskStatus
+}
+
+/**
+ * 导出 AI 预审报告 PDF（浏览器直接下载）。
+ */
+export async function exportReport(appNo: string): Promise<void> {
+  const response = await request(`${API_PREFIX}/applications/${encodeURIComponent(appNo)}/report/export`)
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `AI预审报告_${appNo}.pdf`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * 提交人工复核结果（逐项采纳/修改/驳回）。
+ */
+export async function submitManualReview(
+  appNo: string,
+  payload: ManualReviewPayload
+): Promise<unknown> {
+  const response = await request(`${API_PREFIX}/applications/${encodeURIComponent(appNo)}/reviews`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  return response.json()
+}
+
+/**
+ * 提交风控复核决策：通过 → 已审批；退回补件 → 待补件；拒绝 → 已否决。
+ */
+export async function submitRiskDecision(
+  appNo: string,
+  payload: RiskDecisionPayload
+): Promise<unknown> {
+  const response = await request(`${API_PREFIX}/risk/${encodeURIComponent(appNo)}/decision`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  return response.json()
+}
+
+/**
+ * 上传申请材料（异步任务），立即返回 { request_id, app_no }；
+ * OCR 与 AI 分类在后台执行，通过 fetchMaterials 轮询处理进度。
+ */
+export async function uploadMaterials(appNo: string, files: File[]): Promise<TaskSubmitResponse> {
+  const formData = new FormData()
+  files.forEach((file) => formData.append('files', file))
+
+  const response = await request(
+    `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/materials/upload`,
+    { method: 'POST', body: formData }
+  )
+  return (await response.json()) as TaskSubmitResponse
+}
+
+/**
+ * 删除申请及其所有关联数据（AI 报告、复核记录、材料与上传文件）。
+ */
+export async function deleteApplication(appNo: string): Promise<void> {
+  await request(`${API_PREFIX}/applications/${encodeURIComponent(appNo)}`, {
+    method: 'DELETE'
+  })
+}
+
+/**
+ * 材料文件原始地址（内联返回 PDF / 图片）。
+ */
+export function materialFileUrl(appNo: string, materialId: number | string): string {
+  return `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/materials/${materialId}/file`
+}
+
+/**
+ * 携带令牌下载材料文件，返回 Blob（用于弹窗内预览）。
+ */
+export async function fetchMaterialFile(appNo: string, materialId: number | string): Promise<Blob> {
+  const response = await request(materialFileUrl(appNo, materialId))
+  return response.blob()
+}
+
+/**
+ * 人工修正材料类别，返回更新后的材料记录。
+ */
+export async function updateMaterialCategory(
+  appNo: string,
+  materialId: number | string,
+  category: string
+): Promise<MaterialRow> {
+  const response = await request(
+    `${API_PREFIX}/applications/${encodeURIComponent(appNo)}/materials/${materialId}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category })
+    }
+  )
+  return (await response.json()) as MaterialRow
+}
+
+/**
+ * 删除材料记录及其上传文件。
+ */
+export async function deleteMaterial(appNo: string, materialId: number | string): Promise<void> {
+  await request(`${API_PREFIX}/applications/${encodeURIComponent(appNo)}/materials/${materialId}`, {
+    method: 'DELETE'
+  })
+}

@@ -14,6 +14,7 @@ class AiReportRead(ORMModel):
     rule_version: str | None
     conclusion: AiConclusion
     summary: str | None
+    interpretation_text: str | None = Field(None, description="AI 解读文本（LLM 转述预审快照）")
     pass_rate: float | None
     rule_results: dict[str, Any] | None
     risk_signals: list[dict[str, Any]] | None

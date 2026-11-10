@@ -1,4 +1,4 @@
-﻿"""风控复核 endpoints：DB 读写全部调 ReviewRepository。"""
+"""风控复核 endpoints：DB 读写全部调 ReviewRepository。"""
 
 import logging
 
@@ -72,11 +72,15 @@ def submit_risk_decision(
         )
 
     old_status = app.status
+    checklist = (
+        [item.model_dump() for item in payload.items] if payload.items else None
+    )
     review = RiskReview(
         app_id=app.id,
         reviewer=user.full_name or user.username,
         decision=ReviewDecision(payload.decision),
         opinion=payload.opinion.strip(),
+        checklist_result=checklist,
         mitigation=None,
     )
     if payload.decision == "pass":

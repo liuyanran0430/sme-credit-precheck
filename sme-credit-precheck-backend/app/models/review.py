@@ -1,4 +1,4 @@
-﻿from typing import Any
+from typing import Any
 
 from sqlalchemy import ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -37,4 +37,7 @@ class RiskReview(Base, TimestampMixin):
     reviewer: Mapped[str] = mapped_column(String(50), comment="风控人员")
     decision: Mapped[ReviewDecision] = mapped_column(enum_column(ReviewDecision))
     opinion: Mapped[str] = mapped_column(Text, comment="风控复核意见")
+    checklist_result: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True, comment="逐项风险复核结果"
+    )
     mitigation: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="风险缓释条件")

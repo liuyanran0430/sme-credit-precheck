@@ -49,6 +49,7 @@ from app.schemas.ai_classification import (
 )
 from app.repositories import MaterialRepository, ReportRepository
 from app.services.classifier import load_text
+from app.services.precheck_summary import generate_interpretation
 from app.services.rule_config import extra_required_categories, load_rule_config
 
 logger = logging.getLogger(__name__)
@@ -141,7 +142,7 @@ def analyze_completeness(
     判定规则：
     1. 五大公共必交材料每类至少 1 份（营业执照、银行流水、财务报表、
        纳税申报表、征信授权书）；
-    2. 产品专属必交材料从 rules/rule_<产品>.yaml 的 required_categories
+    2. 产品专属必交材料从 knowledge_base/03_规则配置/准入规则/rule_<产品>.yaml 的 required_categories
        读取，缺失同样提示补件；
     3. 内容可读：OCR 文本为空视为内容不完整，需重传；
     4. 特殊要求：银行流水需覆盖超过 6 个月，财务报表需资产负债表、
@@ -350,6 +351,14 @@ def generate_report(
             rule_config.get("version") if rule_config else "—",
         )
 
+        # 知识库 RAG 增强：补充政策依据与字段缺失的审核要点提示。
+        # 纯解释性增强，不改变任何规则判定、评分或结论。
+        _t = time.perf_counter()
+        _enrich_with_kb(app.product, rule_matching)
+        logger.debug(
+            "kb_enrichment 完成, 耗时=%.2fs", time.perf_counter() - _t
+        )
+
         _t = time.perf_counter()
         risk_summary = summarize_risk_signals(completeness, consistency, rule_matching)
         logger.debug(
@@ -375,6 +384,26 @@ def generate_report(
             summary.pass_rate * 100,
         )
 
+        # AI 解读：基于本次预审快照由 LLM 转述（失败降级模板文本，不阻断预审），
+        # 随报告一并落库，重新预审时覆盖，供详情页与报告页只读展示
+        interpretation_text = generate_interpretation(
+            {
+                "conclusion": summary.conclusion,
+                "summary": summary.summary,
+                "pass_rate": Decimal(str(round(summary.pass_rate, 2))),
+                "rule_results": rule_matching.model_dump(mode="json"),
+                "risk_signals": [
+                    item.model_dump(mode="json") for item in risk_summary.risk_signals
+                ],
+                "conflicts": [
+                    item.model_dump(mode="json") for item in conflict_summary.conflicts
+                ],
+                "completeness": completeness.model_dump(mode="json"),
+            },
+            app_no=app.app_no,
+            company_name=app.company_name,
+        )
+
         # 写入或更新 AI 预审报告（commit=False，与 Application 状态更新同事务提交）
         report = ReportRepository(db).upsert_for_app(
             app.id,
@@ -392,6 +421,7 @@ def generate_report(
                 else None
             ),
             rule_snapshot=jsonable_encoder(rule_config) if rule_config else None,
+            interpretation_text=interpretation_text,
             commit=False,
         )
 
@@ -1711,6 +1741,61 @@ def match_rules(
         return RuleMatchResult(rule_version="unknown", pass_count=0, total_count=0)
     fields = build_rule_fields(app, materials, consistency)
     return evaluate_rules(rule_config, fields)
+
+
+def _category_label(category: str) -> str:
+    """材料类别编码转中文标签；未知编码原样返回。"""
+    try:
+        return CATEGORY_LABELS[MaterialCategory(category)]
+    except ValueError:
+        return category
+
+
+def _enrich_with_kb(product: str, rule_matching: RuleMatchResult) -> None:
+    """用知识库补充规则的政策依据与字段缺失提示。
+
+    仅做证据溯源与解释：检索失败由 kb_retriever 内部降级为 WARNING，
+    这里即使整体异常也只记录日志，绝不改变规则判定、评分或结论。
+    """
+    try:
+        from app.rag.kb_retriever import (
+            retrieve_material_hints,
+            retrieve_rule_basis,
+        )
+
+        pairs = [
+            (item.rule_id, item.rule_name)
+            for item in rule_matching.rules
+            if item.rule_id
+        ]
+        basis = retrieve_rule_basis(product, pairs)
+        for item in rule_matching.rules:
+            if item.rule_id in basis:
+                item.basis = basis[item.rule_id]
+
+        # 字段抽取兜底：仅对证据不足（uncertain）的规则，按材料类别检索审核要点
+        category_queries: dict[str, str] = {}
+        for item in rule_matching.rules:
+            if item.result != RuleMatchStatus.UNCERTAIN or item.evidence is None:
+                continue
+            category = item.evidence.source
+            if not category or category == "application":
+                continue
+            if category not in category_queries:
+                field_name = item.evidence.field or ""
+                category_queries[category] = (
+                    f"{_category_label(category)} {field_name} 字段缺失 审核要点 处置建议"
+                )
+
+        hints = retrieve_material_hints(category_queries)
+        for item in rule_matching.rules:
+            if item.result != RuleMatchStatus.UNCERTAIN or item.evidence is None:
+                continue
+            hint = hints.get(item.evidence.source or "")
+            if hint:
+                item.hint = hint
+    except Exception as exc:  # noqa: BLE001 — 知识库增强失败不得影响预审
+        logger.warning("知识库 RAG 增强失败（仅影响解释，不影响判定）：%s", exc)
 
 
 def summarize_risk_signals(

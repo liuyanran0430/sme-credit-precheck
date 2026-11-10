@@ -297,3 +297,169 @@
   background: var(--purple-bg);
   color: #6d28d9;
 }
+
+/* ===== 风控决策弹框：风险信号逐项复核 ===== */
+.risk-review-block {
+  margin: 14px 0;
+}
+
+.risk-review-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.risk-review-head label {
+  margin: 0;
+}
+
+.risk-review-progress {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--warn, #b45309);
+}
+
+.risk-review-progress.done {
+  color: #047857;
+}
+
+.risk-review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.risk-review-list.has-error {
+  border: 1px dashed var(--risk);
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.risk-item {
+  border: 1px solid var(--slate-200);
+  border-left: 4px solid var(--slate-300);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--slate-50);
+}
+
+.risk-item.level-high {
+  border-left-color: var(--risk);
+}
+
+.risk-item.level-medium {
+  border-left-color: var(--warn);
+}
+
+.risk-item.level-low {
+  border-left-color: #8b5cf6;
+}
+
+.risk-item.confirm {
+  background: #fef2f2;
+}
+
+.risk-item.exclude {
+  background: #f0fdf4;
+}
+
+.risk-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.risk-item-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--slate-800);
+}
+
+.risk-level-tag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.risk-level-tag.lv-high {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.risk-level-tag.lv-medium {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.risk-level-tag.lv-low {
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+.risk-item-desc {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--slate-600);
+  line-height: 1.6;
+}
+
+.risk-item-actions {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.risk-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--slate-500);
+  border: 1px solid var(--slate-200);
+  background: #fff;
+  border-radius: 14px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.risk-choice input {
+  accent-color: currentColor;
+  margin: 0;
+}
+
+.risk-choice.confirm.sel {
+  border-color: var(--risk);
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.risk-choice.exclude.sel {
+  border-color: #10b981;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.risk-comment {
+  flex: 1;
+  min-width: 160px;
+  border: 1px solid var(--slate-200);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.risk-comment:focus {
+  outline: none;
+  border-color: var(--blue);
+}

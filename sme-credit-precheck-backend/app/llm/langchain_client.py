@@ -144,12 +144,16 @@ class LangChainClient(LLMClient):
         if self._embeddings is None:
             from langchain_openai import OpenAIEmbeddings
 
-            self._embeddings = OpenAIEmbeddings(
-                api_key=config.LLM_API_KEY,
-                base_url=config.LLM_BASE_URL,
-                model=config.EMBEDDING_MODEL,
-                dimensions=config.EMBEDDING_DIMENSIONS,
-            )
+            # dimensions 仅在显式配置为正数时传递：
+            # 部分模型（如 BAAI/bge-m3）不支持该参数，传了会返回 400
+            kwargs: dict[str, object] = {
+                "api_key": config.EMBEDDING_API_KEY,
+                "base_url": config.EMBEDDING_BASE_URL,
+                "model": config.EMBEDDING_MODEL,
+            }
+            if config.EMBEDDING_DIMENSIONS > 0:
+                kwargs["dimensions"] = config.EMBEDDING_DIMENSIONS
+            self._embeddings = OpenAIEmbeddings(**kwargs)  # type: ignore[arg-type]
         return with_retry(
             lambda: self._embeddings.embed_documents(list(texts)),
             operation="embed",

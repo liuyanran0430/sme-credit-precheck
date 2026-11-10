@@ -18,6 +18,8 @@ OPENAPI_TAGS = [
     {"name": "AI 预审", "description": "AI 预审报告查询与生成"},
     {"name": "人工复核", "description": "人工复核清单与复核结果提交"},
     {"name": "风控复核", "description": "风控复核队列与决策提交"},
+    {"name": "政策问答", "description": "基于知识库的信贷政策问答 Agent"},
+    {"name": "授信助手", "description": "只读本人名下业务数据的授信办理助手"},
 ]
 
 
