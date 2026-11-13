@@ -15,7 +15,7 @@ class QaMessage(BaseModel):
     """单条历史对话（角色固定 user/assistant）。"""
 
     role: str = Field(..., pattern=r"^(user|assistant)$", description="角色")
-    content: str = Field(..., min_length=1, max_length=1000, description="对话内容")
+    content: str = Field(..., min_length=1, max_length=5000, description="对话内容")
 
 
 class QaRequest(BaseModel):

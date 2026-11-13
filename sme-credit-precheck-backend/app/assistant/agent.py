@@ -244,7 +244,7 @@ def _run_tool_rounds(
     executed_names: set[str] = set()
     rounds = max(1, config.ASSISTANT_MAX_TOOL_ROUNDS)
 
-    for _ in range(rounds):
+    for round_no in range(1, rounds + 1):
         calls = _plan_calls(
             req, history, executed_names,
             agent_type=agent_type,
@@ -253,7 +253,20 @@ def _run_tool_rounds(
         )
         new_calls = [c for c in calls if _signature(c) not in signatures][:3]
         if not new_calls:
+            logger.info(
+                "assistant.plan 无新增调用 agent=%s round=%d executed=%s",
+                agent_type,
+                round_no,
+                sorted(executed_names),
+            )
             break
+
+        logger.info(
+            "assistant.plan 本轮工具 agent=%s round=%d tools=%s",
+            agent_type,
+            round_no,
+            [c.tool for c in new_calls],
+        )
 
         for call in new_calls:
             signatures.add(_signature(call))
@@ -308,7 +321,13 @@ def _plan_calls(
             return calls[:3]
         if executed_names:
             return []
-        return _rule_calls(req, agent_type)
+        rule_calls = _rule_calls(req, agent_type)
+        logger.info(
+            "assistant.plan 空规划，降级规则直连 agent=%s tools=%s",
+            agent_type,
+            [c.tool for c in rule_calls],
+        )
+        return rule_calls
     except Exception as exc:  # noqa: BLE001 — 规划失败不得中断问答
         logger.warning("assistant.plan 失败，降级为规则直连：%s", exc)
         return _rule_calls(req, agent_type)
@@ -694,7 +713,7 @@ def _missing_notes(outcomes: Sequence[ToolOutcome]) -> list[str]:
     notes: list[str] = []
     for outcome in outcomes:
         if not outcome.ok:
-            notes.append(f"{outcome.name} 查询{outcome.error or '失败'}，本次回答可能不完整")
+            notes.append(f"{outcome.name} {outcome.error or '查询失败'}，本次回答可能不完整")
     return notes
 
 

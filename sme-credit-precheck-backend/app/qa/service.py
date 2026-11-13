@@ -23,6 +23,7 @@ from app.qa.intent import detect_intent
 from app.qa.prompt import SYSTEM_PROMPT, build_user_prompt, truncate_answer, validate_and_clean
 from app.qa.retrieval import retrieve_policy_hits as _retrieve_with_fallback
 from app.rag.kb_retriever import KnowledgeHit
+from app.services.rule_config import load_rule_config
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,34 @@ def ask_question(
             hint=_PERSONAL_HINT,
         )
 
+    # 代办写操作请求：明确拒绝，不检索、不调 LLM
+    if is_action_request(req.question):
+        logger.info("qa.action_refusal request_id=%s", request_id)
+        return QaResponse(
+            answer=_ACTION_REFUSAL_ANSWER,
+            references=[],
+            confidence=0.0,
+            used_collections=[],
+            fallback_used=False,
+            model=_current_model(),
+            request_id=request_id,
+            hint=_ACTION_HINT,
+        )
+
+    # 复核判断类问题：只给依据，引导人工判断
+    if is_review_judgement_question(req.question):
+        logger.info("qa.review_judgement request_id=%s", request_id)
+        return QaResponse(
+            answer=_REVIEW_ANSWER,
+            references=[],
+            confidence=0.0,
+            used_collections=[],
+            fallback_used=False,
+            model=_current_model(),
+            request_id=request_id,
+            hint=_REVIEW_HINT,
+        )
+
     # 1. 意图识别
     intent = detect_intent(
         req.question,
@@ -123,6 +152,15 @@ def ask_question(
     hits, used_collections, fallback_used = _retrieve_with_fallback(
         intent.kind, req.question, intent.plans
     )
+
+    # 3.1 产品准入 / 规则解释：直接加载该产品的规则 YAML，作为高优先级证据注入
+    #      （向量库可能未收录规则配置，且具体准入门槛只在 YAML 里）
+    if intent.product_hint and intent.kind in ("product_admission", "rule_explain", "general"):
+        rule_hit = _build_rule_config_hit(intent.product_hint)
+        if rule_hit is not None:
+            hits = [rule_hit] + hits
+            if "kb_rule_config" not in used_collections:
+                used_collections.append("kb_rule_config")
 
     if not hits:
         return QaResponse(
@@ -207,6 +245,96 @@ def get_suggestions(role: str | None = None) -> SuggestionResponse:
 # ---------------------------------------------------------------- 内部工具
 
 
+def _build_rule_config_hit(product: str) -> KnowledgeHit | None:
+    """把产品准入规则 YAML 渲染成人类可读的文本，作为高优先级证据。
+
+    具体准入门槛（强/弱规则、阈值、评分等级）只存在于 YAML，
+    向量库不一定收录，因此产品准入类问题直接读文件更可靠。
+    """
+    config = load_rule_config(product)
+    if not config:
+        return None
+
+    product_name = str(config.get("product") or product)
+    version = str(config.get("version") or "")
+    rules = config.get("rules") or []
+
+    hard_rules = [r for r in rules if r.get("kind") == "hard"]
+    soft_rules = [r for r in rules if r.get("kind") == "soft"]
+
+    lines: list[str] = [f"【{product_name} 准入规则（版本 {version}）】", ""]
+
+    lines.append("一、强规则（任一不满足 → 直接拒绝）：")
+    for r in hard_rules:
+        rid = r.get("rule_id", "")
+        name = r.get("rule_name", "")
+        detail = r.get("detail_zh", "")
+        lines.append(f"  - {rid} {name}：{detail}")
+    if not hard_rules:
+        lines.append("  （无）")
+
+    lines.append("")
+    lines.append("二、弱规则（不满足不拦截，影响打分/评级）：")
+    for r in soft_rules:
+        rid = r.get("rule_id", "")
+        name = r.get("rule_name", "")
+        detail = r.get("detail_zh", "")
+        lines.append(f"  - {rid} {name}：{detail}")
+    if not soft_rules:
+        lines.append("  （无）")
+
+    scoring = config.get("scoring") or {}
+    thresholds = scoring.get("level_thresholds") or {}
+    labels = scoring.get("level_label") or {}
+    notes = scoring.get("level_note") or {}
+    if thresholds:
+        lines.append("")
+        lines.append("三、评分等级：")
+        for level in ("A", "B", "C", "D"):
+            if level not in thresholds:
+                continue
+            rng = thresholds[level]
+            label = labels.get(level, "")
+            note = notes.get(level, "")
+            lines.append(f"  - {level}（{label}）：得分 {rng[0]}-{rng[1]}，{note}")
+
+    conclusion = config.get("conclusion_logic") or {}
+    if conclusion:
+        lines.append("")
+        lines.append("四、结论口径：")
+        logic_map = {
+            "hard_rule_fail": "强规则不通过",
+            "completeness_issue": "材料完整性问题",
+            "consistency_high_fail": "一致性高风险项不通过",
+            "soft_rule_fail_count_ge_3": "弱规则不通过 ≥ 3 条",
+            "else": "其余情况",
+        }
+        action_map = {
+            "reject": "拒绝",
+            "manual": "待补件",
+            "attention": "待人工核验",
+            "pass": "通过（按得分评级）",
+        }
+        for key, action in conclusion.items():
+            desc = logic_map.get(key, key)
+            act = action_map.get(str(action), str(action))
+            lines.append(f"  - {desc} → {act}")
+
+    text = "\n".join(lines)
+    source = f"03_规则配置/准入规则/rule_{product}.yaml"
+    return KnowledgeHit(
+        collection="kb_rule_config",
+        text=text,
+        score=1.0,
+        metadata={
+            "source": source,
+            "product": product_name,
+            "version": version,
+            "kind": "rule_config",
+        },
+    )
+
+
 def is_personal_business_question(question: str) -> bool:
     """个人代词 + 申请语义同时命中，判定为应改用授信助手的业务问题。"""
     text = question.strip()
@@ -219,18 +347,73 @@ def is_personal_business_question(question: str) -> bool:
 _is_personal_business_question = is_personal_business_question
 
 
+# 要求代替办理写操作（审批/退回/改状态）：QA 无写能力，必须明确拒绝而非答"暂无内容"
+_ACTION_REFUSAL_ANSWER = (
+    "我不能代为办理审批、退回或修改申请状态等业务动作。"
+    "政策问答只解释制度与规则，不读写任何业务数据；"
+    "如需处理这笔申请，请到申请详情页或复核队列由人工操作。"
+)
+_ACTION_HINT = "涉及业务动作办理，请到对应申请页面人工处理。"
+
+# 复核判断类问题：只给依据，不代替人工下结论
+_REVIEW_ANSWER = (
+    "这属于需要人工判断的复核问题。我只能提供规则依据与风险信号，"
+    "不代替风控人员下结论——请结合证据、识别置信度与材料情况判断，"
+    "最终复核结论以人工判断为准。"
+)
+_REVIEW_HINT = "复核结论需人工判断，建议先查看该申请的预审报告与风险信号。"
+
+# 动作词与委托语气同时命中才判为越权办理请求，避免误伤「什么情况会被退回」这类政策问法
+_ACTION_VERBS: tuple[str, ...] = (
+    "审批通过", "直接通过", "帮我通过", "代为审批", "批准",
+    "代为提交", "帮我提交", "代为拒绝", "直接拒绝",
+    "退回", "驳回", "修改状态", "改状态", "标记为",
+)
+_DELEGATION_MARKERS: tuple[str, ...] = ("帮我", "替我", "代为", "给我", "你帮我", "帮忙")
+
+# 复核判断语气：仅在明确要求给出「确认/排除/否决」结论时触发
+_REVIEW_JUDGEMENT_TERMS: tuple[str, ...] = (
+    "确认风险", "误报排除", "按误报", "确认还是排除", "该不该拒",
+    "建议否决", "是否否决", "判定为风险",
+)
+
+
+def is_action_request(question: str) -> bool:
+    """是否为要求代办的写操作请求（审批通过 / 退回 / 改状态等）。"""
+    text = question.strip()
+    if not any(marker in text for marker in _DELEGATION_MARKERS):
+        return False
+    return any(verb in text for verb in _ACTION_VERBS)
+
+
+def is_review_judgement_question(question: str) -> bool:
+    """是否为需要人工下结论的复核判断问题。"""
+    text = question.strip()
+    return any(term in text for term in _REVIEW_JUDGEMENT_TERMS)
+
+
+# 兼容内部命名风格
+_is_action_request = is_action_request
+_is_review_judgement_question = is_review_judgement_question
+
+
+
 def _truncate_history(chat_history: list[Any] | None) -> list[dict[str, str]] | None:
     if not chat_history:
         return None
     turns = max(0, config.QA_MAX_HISTORY_TURNS)
-    # 一轮 = 1 user + 1 assistant；取最近 turns 轮
+    # 单轮 = 1 user + 1 assistant；取最近 turns 轮
     flat: list[dict[str, str]] = []
     for msg in chat_history:
         role = getattr(msg, "role", None) or (msg.get("role") if isinstance(msg, dict) else None)
         content = getattr(msg, "content", None) or (msg.get("content") if isinstance(msg, dict) else None)
         if not role or not content:
             continue
-        flat.append({"role": role, "content": str(content)})
+        # 单条内容过长会撑爆 prompt，截到 1200 字（回答上限 1500，留有余量）
+        text = str(content)
+        if len(text) > 1200:
+            text = text[:1200].rstrip() + "…"
+        flat.append({"role": role, "content": text})
 
     # 保留最近的 turns 轮（每轮 2 条，若最后不成对则保留完整 user 部分）
     recent = flat[-2 * turns :] if turns > 0 else []

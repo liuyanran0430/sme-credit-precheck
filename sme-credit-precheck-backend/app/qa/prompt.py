@@ -18,7 +18,8 @@ SYSTEM_PROMPT = """你是"小微信贷政策问答助手"，帮助客户经理�
 4. 如果多个来源存在出入，必须同时列出并说明差异点
 5. 如果信息不足以回答，直接说明"需要更多信息"并给出需要补充的字段清单
 6. 不执行任何规则判定或评分计算（那是 AI 预审的职责）
-7. 不透露系统内部实现（YAML、向量库、代码、collection 名等）"""
+7. 不透露系统内部实现（YAML、向量库、代码、collection 名等）
+8. 不得把「知识库片段未提到」当作「制度不要求 / 不适用」：片段中没有相关规定时，必须明确说明"知识库未作规定，需人工确认"，禁止据此做否定式结论（如「规则未提及抵押，所以不需要抵押」）"""
 
 
 @dataclass
@@ -80,10 +81,11 @@ def build_user_prompt(
         lines.append(
             f"[{item.index}] (score={item.hit.score:.2f}) {source}"
         )
-        # 压缩空白并按 max_chars 截断
+        # 压缩空白并截断。规则配置（YAML 准入规则）内容较长且是核心证据，放宽到 2000 字
         compact = re.sub(r"\s+", " ", item.hit.text).strip()
-        if len(compact) > max_chars_per_hit:
-            compact = compact[:max_chars_per_hit].rstrip() + "…"
+        limit = 2000 if meta.get("kind") == "rule_config" else max_chars_per_hit
+        if len(compact) > limit:
+            compact = compact[:limit].rstrip() + "…"
         lines.append(compact)
         lines.append("")
 

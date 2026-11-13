@@ -283,7 +283,8 @@ class TestAskQuestionService:
         mock_retrieve.return_value = (mock_hits, ["kb_policy"], False)
 
         class _Resp:
-            content = "普惠小微经营贷要求成立年限 ≥ 2 年 [1]。"
+            # [1] 是注入的规则配置 hit，[2] 是向量检索到的 kb_policy hit
+            content = "普惠小微经营贷要求成立年限 ≥ 2 年 [2]。"
             model = "mock-model"
         mock_get_client.return_value.chat.return_value = _Resp()
 
@@ -292,19 +293,23 @@ class TestAskQuestionService:
             request_id="abc123",
         )
         assert resp.request_id == "abc123"
-        assert resp.answer == "普惠小微经营贷要求成立年限 ≥ 2 年 [1]。"
+        assert resp.answer == "普惠小微经营贷要求成立年限 ≥ 2 年 [2]。"
+        # 引用 [2] 对应 kb_policy hit
         assert len(resp.references) == 1
         assert resp.references[0].rule_id == "AP-H02"
         assert resp.confidence > 0.5
-        assert resp.used_collections == ["kb_policy"]
+        # 产品准入问题会注入规则配置 hit，因此 used_collections 包含 kb_rule_config
+        assert "kb_rule_config" in resp.used_collections
+        assert "kb_policy" in resp.used_collections
         assert resp.fallback_used is False
         assert resp.model == "mock-model"
 
     @patch("app.qa.service._retrieve_with_fallback")
     def test_empty_retrieve_returns_no_result_msg(self, mock_retrieve):
         mock_retrieve.return_value = ([], [], False)
-        # 问题必须能触发业务意图（否则会被 detect_intent 判 out_of_scope）
-        resp = ask_question(QaRequest(question="普惠小微经营贷对成立年限有什么要求？"))
+        # 不带具体产品的问题：检索为空时仍返回"暂无内容"
+        # （带产品名的准入问题会从 YAML 注入规则配置，不会落到这里）
+        resp = ask_question(QaRequest(question="营业执照有什么审核要求？"))
         assert "知识库中暂无相关内容" in resp.answer
         assert resp.confidence == 0.0
         assert resp.references == []

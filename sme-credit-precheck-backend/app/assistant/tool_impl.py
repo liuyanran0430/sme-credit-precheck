@@ -137,7 +137,17 @@ def execute_tool(
     """执行单个工具，超时/异常一律降级为失败结果，不向上抛。"""
     handler = _HANDLERS.get(name)
     if handler is None:
+        logger.warning("assistant.tool 未知工具 name=%s args=%s", name, _safe_args(args))
         return ToolOutcome(name=name, ok=False, error="未知工具", args=args)
+
+    safe_args = _safe_args(args)
+    logger.info(
+        "assistant.tool 开始 name=%s role=%s args=%s timeout=%.1fs",
+        name,
+        getattr(getattr(user, "role", None), "value", "unknown"),
+        safe_args,
+        timeout,
+    )
 
     start = time.perf_counter()
     executor = ThreadPoolExecutor(max_workers=1)
@@ -145,35 +155,57 @@ def execute_tool(
         future = executor.submit(handler, db, user, args)
         data, refs, apps, policy_hits = _unpack(future.result(timeout=max(0.1, timeout)))
         latency = int((time.perf_counter() - start) * 1000)
+        rendered = _trim(data)
+        logger.info(
+            "assistant.tool 完成 name=%s latency_ms=%d chars=%d refs=%d apps=%d hits=%d",
+            name,
+            latency,
+            len(rendered),
+            len(refs),
+            len(apps),
+            len(policy_hits),
+        )
         return ToolOutcome(
             name=name,
             ok=True,
-            data=_trim(data),
+            data=rendered,
             latency_ms=latency,
-            args=_safe_args(args),
+            args=safe_args,
             refs=refs,
             apps=apps,
             policy_hits=policy_hits,
         )
     except FutureTimeout:
         latency = int((time.perf_counter() - start) * 1000)
-        logger.warning("assistant.tool 超时 name=%s timeout=%.1fs", name, timeout)
+        logger.warning(
+            "assistant.tool 超时 name=%s timeout=%.1fs latency_ms=%d args=%s",
+            name,
+            timeout,
+            latency,
+            safe_args,
+        )
         return ToolOutcome(
             name=name,
             ok=False,
             error="查询超时",
             latency_ms=latency,
-            args=_safe_args(args),
+            args=safe_args,
         )
     except Exception as exc:  # noqa: BLE001 — 工具异常不得中断整轮问答
         latency = int((time.perf_counter() - start) * 1000)
-        logger.warning("assistant.tool 失败 name=%s：%s", name, exc)
+        logger.warning(
+            "assistant.tool 失败 name=%s latency_ms=%d args=%s：%s",
+            name,
+            latency,
+            safe_args,
+            exc,
+        )
         return ToolOutcome(
             name=name,
             ok=False,
             error="查询失败",
             latency_ms=latency,
-            args=_safe_args(args),
+            args=safe_args,
         )
     finally:
         executor.shutdown(wait=False)
